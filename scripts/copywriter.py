@@ -64,13 +64,15 @@ Réponds UNIQUEMENT en JSON valide, sans texte autour, avec ce schéma exact :
 {{
   "headline": "accroche percutante et concrète, 7-11 mots, sans point final",
   "body_text": "3 phrases factuelles (45-60 mots) : ce qui s'est passé, où/qui, l'ampleur, et l'enjeu pour les industriels",
-  "facts": ["recommandation d'audit 1", "recommandation d'audit 2", "recommandation d'audit 3"]
+  "facts": ["fait clé 1 tiré de l'article", "fait clé 2", "fait clé 3"]
 }}
 
-Le champ "facts" DOIT contenir EXACTEMENT 3 éléments. Chacun est une action ou un point \
-de vigilance PRÉCIS et actionnable pour un auditeur (10 à 18 mots), par exemple : \
-« Vérifier la traçabilité amont et les certificats fournisseurs sur les lots concernés ». \
-Jamais un simple mot-clé comme « traçabilité » ou « qualité du sol »."""
+Le champ "facts" DOIT contenir EXACTEMENT 3 éléments. Chacun est une INFORMATION CONCRÈTE \
+tirée de l'article (10 à 18 mots) : un chiffre, un constat, le périmètre géographique, les \
+acteurs concernés, une date, un produit/danger précis ou une mesure prise. Ce sont des FAITS \
+issus de l'article, JAMAIS des conseils génériques ni des mots-clés. \
+Exemple pour un rapport : « Une enquête de la Commission européenne a évalué les États membres \
+en 2025 ». Exemple pour un rappel : « Plus de 12 lots retirés dans la grande distribution »."""
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -89,9 +91,9 @@ def _heuristic_copy(item, editorial_angle: str = "") -> dict:
         "headline": _truncate(item.title, 68),
         "body_text": body,
         "facts": [
-            "Identifier les références et lots potentiellement concernés chez vos fournisseurs",
-            "Documenter le contrôle et tracer la décision dans votre système qualité",
-            f"Recouper avec la source ({item.source}) et votre analyse de dangers ({cat_label})",
+            f"Information rapportée par {item.source} — zone : {item.country}",
+            f"Catégorie concernée : {cat_label}",
+            "Consultez la source pour le détail des produits, lots et mesures",
         ],
     }
 
@@ -168,10 +170,11 @@ def generate_copy(item, editorial_angle: str = "") -> dict:
         # On NE force PAS d'angle thématique : l'accroche, le résumé et les points
         # d'audit doivent porter uniquement sur l'événement réel de l'article.
         editorial_context = (
-            "IMPÉRATIF : l'accroche, le résumé ET les 3 recommandations d'audit "
-            "portent EXCLUSIVEMENT sur l'événement précis décrit ci-dessous (le "
-            "produit, le danger, le lieu, les mesures). N'introduis AUCUN sujet "
-            "absent de l'article (pas de généralités hors sujet)."
+            "IMPÉRATIF : l'accroche, le résumé ET les 3 faits clés portent "
+            "EXCLUSIVEMENT sur l'événement précis décrit ci-dessous (produit, "
+            "danger, lieu, chiffres, acteurs, mesures). N'introduis AUCUN sujet "
+            "absent de l'article, aucun conseil générique : uniquement des "
+            "informations réellement présentes dans l'article."
         )
         system = SYSTEM_PROMPT.format(editorial_context=editorial_context)
         user_content = (
@@ -181,7 +184,7 @@ def generate_copy(item, editorial_angle: str = "") -> dict:
             f"Catégorie : {CATEGORY_LABELS.get(item.category, item.category)} | "
             f"Niveau de risque : {item.risk_level} | Date : {item.published}\n"
             "Rappel : JSON, entièrement en FRANÇAIS, « sécurité des aliments » "
-            "(jamais « food safety »), 3 recommandations d'audit concrètes."
+            "(jamais « food safety »), 3 faits clés RÉELLEMENT tirés de l'article."
         )
 
         model = os.environ.get("GROQ_MODEL", DEFAULT_MODEL)

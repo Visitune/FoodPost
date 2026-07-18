@@ -388,7 +388,7 @@ def _slide_detail(ctx):
     draw.line([(64, y), (64 + left_w, y)], fill=accent + (180,), width=2)
     y += 34
 
-    _section_title(draw, "Points clés pour vos audits", (64, y), accent)
+    _section_title(draw, "Points clés à retenir", (64, y), accent)
     y += 48
     fact_font = _font("sans", 26, "Regular")
     marker_font = _font("mono", 22, "Bold")
