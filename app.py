@@ -31,33 +31,34 @@ try:
 except Exception:
     pass
 
-from themes import get_all_themes, get_theme_by_id
+from themes import get_all_themes, get_theme_by_id, category_for_theme
 from classify import select_top_items
 from sources import RawItem, fetch_all
 from render_slides import render_article_to_pdf
 
 
 def demo_items() -> list[RawItem]:
+    """Jeu de démo couvrant plusieurs catégories (une par thème) pour que le
+    choix d'un thème ramène bien un article cohérent et différent."""
     now = dt.datetime.now(dt.timezone.utc)
     return [
-        RawItem(
+        RawItem(  # biologique -> thème Listeria
             title="Rappel de fromages au lait cru pour suspicion de Listeria monocytogenes",
             summary=(
                 "Un producteur régional a lancé un rappel volontaire sur plusieurs lots "
                 "de fromages au lait cru après la détection de Listeria monocytogenes lors "
-                "d'un autocontrôle. Aucun cas clinique confirmé à ce jour, distribution "
-                "concernée : grande distribution et crémeries dans trois régions."
+                "d'un autocontrôle. Distribution en grande distribution dans trois régions."
             ),
             source="RappelConso",
             url="https://rappel.conso.gouv.fr/fiche-rappel/exemple",
             published=now - dt.timedelta(hours=6),
             country="France",
         ),
-        RawItem(
+        RawItem(  # allergene -> thème Allergènes
             title="Alerte RASFF : présence non déclarée d'allergène (moutarde) dans une sauce",
             summary=(
-                "Le système RASFF signale la présence de moutarde non mentionnée sur "
-                "l'étiquette d'une sauce condimentaire distribuée dans plusieurs pays "
+                "Le système RASFF signale la présence d'un allergène (moutarde) non "
+                "mentionné sur l'étiquette d'une sauce distribuée dans plusieurs pays "
                 "européens. Le fabricant a été notifié et un retrait est en cours."
             ),
             source="RASFF",
@@ -65,12 +66,62 @@ def demo_items() -> list[RawItem]:
             published=now - dt.timedelta(hours=20),
             country="Union Européenne",
         ),
+        RawItem(  # chimique -> thème Chimique
+            title="Dépassement des limites de résidus de pesticides dans des lots de thé importé",
+            summary=(
+                "Des résidus de pesticides supérieurs aux limites autorisées ont été "
+                "détectés dans plusieurs lots de thé importé. Notification RASFF et retrait "
+                "engagé dans plusieurs pays européens."
+            ),
+            source="RASFF",
+            url="https://webgate.ec.europa.eu/rasff-window/",
+            published=now - dt.timedelta(hours=30),
+            country="Union Européenne",
+        ),
+        RawItem(  # corps_etranger -> thème Corps étrangers
+            title="Rappel de plats préparés pour présence possible de morceaux de verre",
+            summary=(
+                "Un fabricant rappelle plusieurs lots de plats préparés distribués en "
+                "grande distribution après la détection de corps étrangers (morceaux de "
+                "verre). Aucun blessé signalé à ce jour."
+            ),
+            source="RappelConso",
+            url="https://rappel.conso.gouv.fr/fiche-rappel/exemple2",
+            published=now - dt.timedelta(hours=12),
+            country="France",
+        ),
+        RawItem(  # fraude -> thème Fraude
+            title="Suspicion de fraude sur l'authenticité d'huiles d'olive vierge extra",
+            summary=(
+                "Une enquête révèle une adultération et une tromperie sur l'authenticité "
+                "de plusieurs huiles d'olive vierge extra vendues en Europe. Origine "
+                "géographique non conforme à l'étiquetage annoncé."
+            ),
+            source="FoodSafetyNews",
+            url="https://www.foodsafetynews.com/exemple-fraude",
+            published=now - dt.timedelta(hours=40),
+            country="Europe",
+        ),
+        RawItem(  # reglementaire -> thème Réglementaire
+            title="Révision du règlement européen sur les contrôles officiels dans l'agroalimentaire",
+            summary=(
+                "La Commission européenne engage une révision du règlement sur les "
+                "contrôles officiels. Un rapport et un avis EFSA accompagnent cette "
+                "évolution attendue dans plusieurs pays européens."
+            ),
+            source="EFSA",
+            url="https://www.efsa.europa.eu/exemple-reglement",
+            published=now - dt.timedelta(hours=44),
+            country="Union Européenne",
+        ),
     ]
 
 
-def generate(theme: dict, style: str, author: str, max_items: int, use_demo: bool) -> list[dict]:
+def generate(theme, style: str, author: str, max_items: int, use_demo: bool) -> list[dict]:
     raw_items = demo_items() if use_demo else fetch_all()
-    top_items = select_top_items(raw_items, max_items=max_items)
+    # Thème imposé -> on filtre les articles sur sa catégorie (Auto = None = tout).
+    category = category_for_theme(theme)
+    top_items = select_top_items(raw_items, max_items=max_items, category=category)
 
     results = []
     for i, item in enumerate(top_items, start=1):
@@ -213,10 +264,15 @@ with col1:
                         selected_theme["name"] if selected_theme else "Automatique (selon l'article)"
                     )
                     st.success(f"{len(results)} PDF généré(s) !")
+                elif selected_theme is not None:
+                    st.warning(
+                        f"Aucun article de la catégorie « {selected_theme['name']} » "
+                        "sur la période. Essaie le mode **Auto** ou un autre thème."
+                    )
                 else:
                     st.warning(
                         "Aucun événement assez impactant sur la période "
-                        "(normal hors mode démo si rien de CRITICAL/HIGH récent)."
+                        "(normal hors mode démo si rien de CRITICAL/HIGH/récurrent récent)."
                     )
             except Exception as e:
                 st.error(f"Erreur lors de la génération : {e}")

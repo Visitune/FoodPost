@@ -172,6 +172,15 @@ def get_theme_for_category(category: str) -> dict:
     return get_theme_by_id(_CATEGORY_TO_THEME.get(category, "alerte_generale"))
 
 
+def category_for_theme(theme: dict | None) -> str | None:
+    """Catégorie d'article associée à un thème (pour filtrer la sélection).
+    None si thème absent ou générique (alerte_generale) -> pas de filtre."""
+    if not theme:
+        return None
+    hints = theme.get("category_hints") or []
+    return hints[0] if hints else None
+
+
 def get_all_themes() -> list[dict]:
     """Retourne la liste de tous les thèmes disponibles."""
     return THEMES

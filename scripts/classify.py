@@ -91,13 +91,20 @@ def _dedupe(items: list[ScoredItem]) -> list[ScoredItem]:
     return out
 
 
-def select_top_items(raw_items: list[RawItem], max_items: int = MAX_ITEMS_PER_RUN) -> list[ScoredItem]:
+def select_top_items(raw_items: list[RawItem], max_items: int = MAX_ITEMS_PER_RUN,
+                     category: str | None = None) -> list[ScoredItem]:
+    """Sélectionne les meilleurs articles. Si `category` est fourni (thème imposé),
+    on ne garde que les articles de CETTE catégorie -> un thème choisi ramène bien
+    un article correspondant, pas toujours le même top global."""
     # 1. Filtrage agro + pré-classification (nécessaire pour compter les récurrences)
     prelim = []
     for item in raw_items:
         if not is_agro_relevant(item):
             continue
-        prelim.append((item, classify_risk(item), classify_category(item)))
+        cat = classify_category(item)
+        if category and cat != category:
+            continue
+        prelim.append((item, classify_risk(item), cat))
 
     # 2. Récurrence : combien de fois chaque catégorie apparaît sur la période
     category_counts = Counter(cat for _, _, cat in prelim)

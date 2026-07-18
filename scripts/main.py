@@ -14,7 +14,7 @@ from classify import select_top_items
 from sources import fetch_all, RawItem
 from render_slides import render_article_to_pdf
 from notify_email import send_notification
-from themes import get_all_themes, get_theme_by_id
+from themes import get_all_themes, get_theme_by_id, category_for_theme
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
@@ -65,7 +65,8 @@ def run(demo: bool, style: str, author_name: str, max_items: int, theme_id: str 
     raw_items = _demo_items() if demo else fetch_all()
     print(f"[main] {len(raw_items)} articles bruts récupérés")
 
-    top_items = select_top_items(raw_items, max_items=max_items)
+    category = category_for_theme(forced_theme)  # None si Auto/générique
+    top_items = select_top_items(raw_items, max_items=max_items, category=category)
     print(f"[main] {len(top_items)} article(s) retenu(s) comme très impactant(s)")
     for it in top_items:
         print(f"   - [{it.risk_level}] {it.title[:80]} (score={it.score})")
