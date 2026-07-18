@@ -33,6 +33,19 @@ SLIDE_W, SLIDE_H = 1920, 1080
 PAPER = (233, 236, 234)       # #E9ECEA
 PAPER_DIM = (175, 192, 190)   # #AFC0BE
 
+# Contenu FIXE de la diapo finale (CTA) — met en avant les prestations VisiPilot.
+# Fixe (et non généré par l'IA) pour un branding cohérent d'un post à l'autre.
+VISIPILOT_CTA = {
+    "kicker": "VISIPILOT · VEILLE · IA · DIGITALISATION",
+    "headline": "La veille food safety, augmentée par l'IA",
+    "services": [
+        "Veille réglementaire & sanitaire en continu",
+        "Outils IA pour la qualité et vos audits",
+        "Digitalisation de vos process (IFS, BRCGS, HACCP)",
+    ],
+    "cta": "Découvrez nos solutions sur visipilot.com",
+}
+
 PEXELS_QUERY_BY_CATEGORY = {
     "biologique": "microbiology laboratory food",
     "allergene": "food ingredients close up",
@@ -402,41 +415,53 @@ def _slide_detail(ctx):
 
 
 def _slide_cta(ctx):
+    """Diapo finale : appel à l'action VisiPilot (veille, IA, digitalisation)."""
     base, draw = _base_slide(**ctx["base"])
     accent = ctx["accent"]
+    cx = SLIDE_W // 2
 
-    hl_font = _font("display", 62)
-    lines = _wrap(draw, ctx["cta_headline"], hl_font, 1400)
-    total_h = len(lines) * 76
-    y = 300
+    # kicker
+    kf = _font("mono", 22, "Bold")
+    kick = VISIPILOT_CTA["kicker"]
+    kw = draw.textlength(kick, font=kf)
+    draw.text((cx - kw / 2, 296), kick, font=kf, fill=accent)
+
+    # headline (centrée, sous le tampon)
+    hl_font = _font("display", 60)
+    lines = _wrap(draw, VISIPILOT_CTA["headline"], hl_font, 1180)
+    y = 352
     for ln in lines:
         w = draw.textlength(ln, font=hl_font)
-        draw.text(((SLIDE_W - w) / 2, y), ln, font=hl_font, fill=PAPER)
-        y += 76
+        draw.text((cx - w / 2, y), ln, font=hl_font, fill=PAPER)
+        y += 74
+    # soulignement d'accent centré
+    draw.line([(cx - 90, y + 18), (cx + 90, y + 18)], fill=accent + (255,), width=6)
 
-    # box CTA centrée
-    box_w = 900
-    bx0 = (SLIDE_W - box_w) // 2
-    by0 = y + 50
-    ct_font = _font("display", 34)
-    cs_font = _font("sans", 26, "Regular")
-    cs_lines = _wrap(draw, ctx["cta_sub"], cs_font, box_w - 100)
-    box_h = 70 + 40 + len(cs_lines) * 38
-    draw.rounded_rectangle([bx0, by0, bx0 + box_w, by0 + box_h], radius=16,
-                           fill=(255, 255, 255, 12), outline=accent + (255,), width=2)
-    tw = draw.textlength(ctx["cta_title"], font=ct_font)
-    draw.text(((SLIDE_W - tw) / 2, by0 + 28), ctx["cta_title"], font=ct_font, fill=PAPER)
-    sy = by0 + 90
-    for ln in cs_lines:
-        w = draw.textlength(ln, font=cs_font)
-        draw.text(((SLIDE_W - w) / 2, sy), ln, font=cs_font, fill=PAPER_DIM)
-        sy += 38
+    # panneau des prestations
+    y += 62
+    pw = 1160
+    px0 = cx - pw // 2
+    rows = VISIPILOT_CTA["services"]
+    row_h = 66
+    ph = 44 + len(rows) * row_h
+    _panel(draw, [px0, y, px0 + pw, y + ph], radius=18)
+    sf = _font("sans", 30, "Medium")
+    ry = y + 30
+    for r in rows:
+        draw.ellipse([px0 + 40, ry + 13, px0 + 56, ry + 29], fill=accent + (255,))
+        draw.text((px0 + 82, ry), r, font=sf, fill=PAPER)
+        ry += row_h
+    y += ph + 40
 
-    # wordmark
-    wy = by0 + box_h + 46
-    _paste_logo(base, 60, (SLIDE_W // 2 - 130, wy - 6))
-    wm_font = _font("mono", 22, "Bold")
-    draw.text((SLIDE_W // 2 - 55, wy + 12), "VISIPILOT.COM", font=wm_font, fill=PAPER_DIM)
+    # bouton CTA
+    cf = _font("mono", 28, "Bold")
+    cta = VISIPILOT_CTA["cta"]
+    cw = draw.textlength(cta, font=cf)
+    bw = cw + 88
+    bx0 = cx - bw // 2
+    draw.rounded_rectangle([bx0, y, bx0 + bw, y + 74], radius=14,
+                           fill=accent + (32,), outline=accent + (255,), width=2)
+    draw.text((cx - cw / 2, y + 21), cta, font=cf, fill=PAPER)
     return base
 
 

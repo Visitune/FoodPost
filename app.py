@@ -154,13 +154,28 @@ with st.sidebar:
     max_items = st.slider("Articles par run", 1, 3, 2)
     use_demo = st.checkbox("Mode démo (données fictives)", value=True)
 
-    # État des clés (explique pourquoi le texte peut rester en anglais / sans photo)
+    # Diagnostic Groq : dit clairement si la traduction/rédaction française marche.
     if not os.environ.get("GROQ_API_KEY"):
         st.warning(
-            "Pas de clé **GROQ_API_KEY** → rédaction basique : le texte peut rester "
+            "Pas de clé **GROQ_API_KEY** → rédaction basique : le texte reste "
             "dans la langue de la source (ex. anglais). Ajoute la clé dans "
-            "**Settings → Secrets** pour une rédaction propre **en français**."
+            "**Settings → Secrets** pour une rédaction **en français**."
         )
+    else:
+        if "groq_ok" not in st.session_state:
+            from copywriter import check_groq
+            st.session_state["groq_ok"], st.session_state["groq_msg"] = check_groq()
+        if st.session_state["groq_ok"]:
+            st.success(f"✅ {st.session_state['groq_msg']} — rédaction en français.")
+        else:
+            st.error(
+                f"❌ {st.session_state['groq_msg']}\n\n"
+                "→ Le texte restera dans la langue de la source. Vérifie la clé "
+                "**GROQ_API_KEY** (et éventuellement **GROQ_MODEL**) dans les Secrets."
+            )
+        if st.button("Re-tester Groq", use_container_width=True):
+            st.session_state.pop("groq_ok", None)
+            st.rerun()
     if style == "photo" and not os.environ.get("PEXELS_API_KEY"):
         st.info(
             "Style **photo** sans **PEXELS_API_KEY** → fond dégradé par défaut. "

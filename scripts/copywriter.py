@@ -10,23 +10,28 @@ Groq est compatible avec l'API OpenAI (endpoint /chat/completions) et propose un
 mode JSON (`response_format`) qui garantit une sortie JSON valide. On appelle
 l'API en REST via `requests` : aucune dépendance supplémentaire à installer.
 
-Modèle par défaut : `openai/gpt-oss-120b` (le plus capable de la gamme Groq,
-rapide et bon marché). Alternatives possibles via GROQ_MODEL :
-  - llama-3.3-70b-versatile   (très bon suivi d'instructions FR)
-  - openai/gpt-oss-20b        (plus rapide, un peu moins fin)
+Modèle par défaut : `llama-3.3-70b-versatile` — le plus FIABLE pour du JSON
+structuré en français (les modèles gpt-oss sont des modèles de raisonnement qui
+gèrent parfois mal le mode JSON, ce qui provoque un repli silencieux en anglais).
+Alternatives possibles via GROQ_MODEL :
+  - openai/gpt-oss-120b       (le plus capable, mais mode JSON parfois capricieux)
+  - openai/gpt-oss-20b        (rapide)
   - llama-3.1-8b-instant      (le plus rapide / le moins cher)
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 
 import requests
 
 from icons import CATEGORY_LABELS
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_MODEL = "openai/gpt-oss-120b"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"
+
+_JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 SYSTEM_PROMPT = """Tu rédiges le contenu d'un carrousel LinkedIn de 3 diapos pour un \
 consultant/auditeur food safety qui fait de la veille réglementaire et sanitaire \
@@ -77,6 +82,69 @@ def _heuristic_copy(item, editorial_angle: str = "") -> dict:
     }
 
 
+def _extract_json(text: str) -> dict:
+    """Extrait un objet JSON même si le modèle l'entoure de texte ou de ```."""
+    text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        m = _JSON_RE.search(text)
+        if m:
+            return json.loads(m.group(0))
+        raise
+
+
+def _post_groq(payload: dict, api_key: str, timeout: int = 30) -> str:
+    resp = requests.post(
+        GROQ_URL,
+        json=payload,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def _groq_copy(system: str, user_content: str, api_key: str, model: str) -> dict:
+    base = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": 0.6,
+        "max_tokens": 800,
+    }
+    # Tentative 1 : mode JSON strict. Tentative 2 (repli) : sans response_format,
+    # car certains modèles (gpt-oss...) ne le supportent pas et échouent sinon.
+    try:
+        return _extract_json(_post_groq({**base, "response_format": {"type": "json_object"}}, api_key))
+    except Exception:
+        return _extract_json(_post_groq(base, api_key))
+
+
+def check_groq() -> tuple[bool, str]:
+    """Diagnostic : vérifie que Groq répond avec la clé/le modèle configurés."""
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        return False, "Aucune clé GROQ_API_KEY détectée."
+    model = os.environ.get("GROQ_MODEL", DEFAULT_MODEL)
+    try:
+        _post_groq(
+            {
+                "model": model,
+                "messages": [{"role": "user", "content": "Réponds uniquement par: OK"}],
+                "max_tokens": 5,
+                "temperature": 0,
+            },
+            api_key,
+            timeout=20,
+        )
+        return True, f"Groq actif (modèle {model})."
+    except Exception as e:
+        return False, f"Groq injoignable ({model}) : {e}"
+
+
 def generate_copy(item, editorial_angle: str = "") -> dict:
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
@@ -96,34 +164,15 @@ def generate_copy(item, editorial_angle: str = "") -> dict:
             f"Résumé source : {item.summary[:600]}\n"
             f"Source : {item.source} | Pays/zone : {item.country} | "
             f"Catégorie : {CATEGORY_LABELS.get(item.category, item.category)} | "
-            f"Niveau de risque : {item.risk_level} | Date : {item.published}"
+            f"Niveau de risque : {item.risk_level} | Date : {item.published}\n"
+            "Rappel : réponds en JSON, entièrement en FRANÇAIS."
         )
 
-        payload = {
-            "model": os.environ.get("GROQ_MODEL", DEFAULT_MODEL),
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ],
-            "temperature": 0.7,
-            "max_tokens": 700,
-            "response_format": {"type": "json_object"},
-        }
-        resp = requests.post(
-            GROQ_URL,
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        text = resp.json()["choices"][0]["message"]["content"]
-        # En mode JSON la sortie est déjà propre ; on nettoie quand même par sécurité.
-        text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        data = json.loads(text)
+        model = os.environ.get("GROQ_MODEL", DEFAULT_MODEL)
+        data = _groq_copy(system, user_content, api_key, model)
         assert "headline" in data and "facts" in data
+        if isinstance(data.get("facts"), str):
+            data["facts"] = [data["facts"]]
         return data
     except Exception as e:
         print(f"[copywriter] fallback heuristique (raison: {e})")
