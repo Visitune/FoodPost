@@ -59,6 +59,29 @@ def _frenchify(value):
 def _frenchify_copy(d: dict) -> dict:
     return {k: _frenchify(v) for k, v in d.items()}
 
+
+# Hashtags LinkedIn : base VisiPilot + spécifiques à la catégorie de l'article.
+BASE_HASHTAGS = ["#SécuritéDesAliments", "#FoodSafety", "#IFS", "#BRCGS", "#Qualité", "#VisiPilot"]
+CATEGORY_HASHTAGS = {
+    "biologique": ["#Listeria", "#Microbiologie"],
+    "allergene": ["#Allergènes", "#Étiquetage"],
+    "chimique": ["#Contaminants", "#Chimique"],
+    "corps_etranger": ["#CorpsÉtrangers", "#HACCP"],
+    "reglementaire": ["#Réglementation", "#Conformité"],
+    "fraude": ["#FraudeAlimentaire", "#FoodFraud"],
+    "autre": [],
+}
+
+
+def build_caption(item, copy: dict) -> str:
+    """Assemble la légende LinkedIn prête à copier : texte + source + hashtags."""
+    post = (copy.get("linkedin_post") or copy.get("headline") or "").strip()
+    tags = CATEGORY_HASHTAGS.get(getattr(item, "category", "autre"), []) + BASE_HASHTAGS
+    tags = list(dict.fromkeys(tags))  # dédoublonne en gardant l'ordre
+    url = getattr(item, "url", "") or ""
+    source_line = f"📄 Source : {item.source}" + (f" — {url}" if url else "")
+    return "\n".join([post, "", source_line, "", " ".join(tags)])
+
 SYSTEM_PROMPT = """Tu rédiges le contenu d'un carrousel LinkedIn de 3 diapos pour un \
 consultant/auditeur en sécurité des aliments qui fait de la veille réglementaire et \
 sanitaire en Europe. Lectorat : responsables qualité, RSE, auditeurs IFS/BRCGS, \
@@ -101,7 +124,8 @@ Réponds UNIQUEMENT en JSON valide, sans texte autour, avec ce schéma exact :
 {{
   "headline": "accroche percutante et concrète, 7-11 mots, sans point final",
   "body_text": "3 phrases factuelles (45-60 mots) : ce qui s'est passé, où/qui, l'ampleur, et l'enjeu pour les industriels",
-  "facts": ["fait clé 1 tiré de l'article", "fait clé 2", "fait clé 3"]
+  "facts": ["fait clé 1 tiré de l'article", "fait clé 2", "fait clé 3"],
+  "linkedin_post": "légende LinkedIn en français : 3 à 5 lignes engageantes, commençant par un emoji d'accroche, exposant le fait marquant et l'enjeu concret pour les industriels/qualiticiens, et se terminant par UNE question d'engagement. PAS de hashtags, PAS de lien (ajoutés séparément)."
 }}
 
 Le champ "facts" DOIT contenir EXACTEMENT 3 éléments. Chacun est une INFORMATION CONCRÈTE \
@@ -132,6 +156,12 @@ def _heuristic_copy(item, editorial_angle: str = "") -> dict:
             f"Catégorie concernée : {cat_label}",
             "Consultez la source pour le détail des produits, lots et mesures",
         ],
+        "linkedin_post": (
+            f"🔎 Veille sécurité des aliments — {cat_label}\n\n"
+            f"{body}\n\n"
+            "Et vous, comment intégrez-vous ce type d'alerte dans vos audits et votre "
+            "analyse des dangers ?"
+        ),
     }
 
 

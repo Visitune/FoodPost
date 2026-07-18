@@ -128,12 +128,15 @@ def generate(theme, style: str, author: str, max_items: int, use_demo: bool) -> 
         pdf_path = render_article_to_pdf(item, author, style, OUTPUT_DIR, index=i, theme=theme)
         slide_pngs = [str(p) for j in range(1, 4)
                       if (p := OUTPUT_DIR / f"article{i}_slide{j}.png").exists()]
+        post_path = OUTPUT_DIR / f"article{i}_post.txt"
+        caption = post_path.read_text(encoding="utf-8") if post_path.exists() else ""
         results.append({
             "title": item.title,
             "source": item.source,
             "risk_level": item.risk_level,
             "pdf": str(pdf_path),
             "slides": slide_pngs,
+            "caption": caption,
         })
     return results
 
@@ -306,6 +309,24 @@ with col2:
                 if png_path.exists():
                     with slide_cols[j]:
                         st.image(str(png_path), caption=f"Slide {j+1}", use_container_width=True)
+
+            if item.get("caption"):
+                st.markdown("**📝 Texte du post LinkedIn** — copie-le dans ta publication :")
+                st.text_area(
+                    "Légende LinkedIn",
+                    value=item["caption"],
+                    height=240,
+                    label_visibility="collapsed",
+                    key=f"cap_{item['pdf']}",
+                )
+                st.download_button(
+                    "Télécharger le texte (.txt)",
+                    data=item["caption"],
+                    file_name=f"{Path(item['pdf']).stem}_post.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                    key=f"dlpost_{item['pdf']}",
+                )
 
             st.markdown("---")
     else:

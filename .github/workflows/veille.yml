@@ -56,10 +56,12 @@ jobs:
             --max-items 2 \
             $THEME_FLAG
 
-      - name: Upload des PDF générés (secours si l'email échoue)
+      - name: Upload des PDF + légendes LinkedIn (secours si l'email échoue)
         uses: actions/upload-artifact@v4
         with:
           name: veille-linkedin-${{ github.run_id }}
-          path: output/*.pdf
+          path: |
+            output/*.pdf
+            output/*_post.txt
           retention-days: 14
           if-no-files-found: ignore

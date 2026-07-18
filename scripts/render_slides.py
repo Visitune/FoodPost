@@ -486,7 +486,7 @@ def _slide_cta(ctx):
 def render_article_to_pdf(item, author_name: str, style: str, out_dir: Path,
                           index: int, theme: dict | None = None) -> Path:
     """style: 'photo' ou 'graphic'. theme: dict du thème visuel. Retourne le chemin du PDF."""
-    from copywriter import generate_copy
+    from copywriter import generate_copy, build_caption
 
     # Par défaut, le thème découle de la CATÉGORIE de l'article (cohérence
     # visuelle + éditoriale). Un thème explicite (choix manuel) reste prioritaire.
@@ -538,4 +538,7 @@ def render_article_to_pdf(item, author_name: str, style: str, out_dir: Path,
 
     pdf_path = out_dir / f"veille_{item.risk_level.lower()}_{index}.pdf"
     png_paths[0].save(pdf_path, save_all=True, append_images=png_paths[1:])
+
+    # Légende LinkedIn prête à copier (pour un post manuel), à côté du PDF.
+    (out_dir / f"article{index}_post.txt").write_text(build_caption(item, copy), encoding="utf-8")
     return pdf_path
