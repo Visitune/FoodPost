@@ -20,7 +20,7 @@ from pathlib import Path
 import requests
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 
-from icons import CATEGORY_LABELS, RISK_LABELS, ACCENT
+from icons import CATEGORY_LABELS, RISK_LABELS
 from themes import get_theme
 
 ROOT = Path(__file__).parent.parent
@@ -124,9 +124,22 @@ def _paste_glow(bg: Image.Image, cx: int, cy: int, diameter: int, color: tuple[i
     bg.paste(glow, (cx - diameter // 2, cy - diameter // 2), rad)
 
 
+def _apply_left_shade(bg: Image.Image) -> Image.Image:
+    """Assombrit le tiers gauche (dégradé horizontal) pour garantir le contraste
+    du texte blanc, tout en laissant la couleur vive s'exprimer à droite."""
+    shade = Image.new("L", (SLIDE_W, 1))
+    for x in range(SLIDE_W):
+        t = x / (SLIDE_W - 1)
+        shade.putpixel((x, 0), int(max(0.0, 175 * (1 - t / 0.55))))
+    shade = shade.resize((SLIDE_W, SLIDE_H))
+    black = Image.new("RGB", (SLIDE_W, SLIDE_H), (0, 0, 0))
+    return Image.composite(black, bg, shade)
+
+
 def _make_background(theme: dict, photo_url: str | None = None) -> Image.Image:
-    top = _hex_to_rgb(_darken_hex(theme["primary"], 70))
-    bot = _hex_to_rgb(_darken_hex(theme["secondary"], 90))
+    # Moins de noircissement -> couleurs de thème plus riches et vivantes.
+    top = _hex_to_rgb(_darken_hex(theme["primary"], 32))
+    bot = _hex_to_rgb(_darken_hex(theme["secondary"], 74))
 
     bg = Image.new("RGB", (SLIDE_W, SLIDE_H), bot)
     d = ImageDraw.Draw(bg)
@@ -140,10 +153,11 @@ def _make_background(theme: dict, photo_url: str | None = None) -> Image.Image:
     primary = _hex_to_rgb(theme["primary"])
     accent = _hex_to_rgb(theme["accent"])
     secondary = _hex_to_rgb(theme["secondary"])
-    _paste_glow(bg, int(SLIDE_W * 0.20), int(SLIDE_H * 0.45), 1500, primary, 0.55)
-    _paste_glow(bg, int(SLIDE_W * 0.85), int(SLIDE_H * 0.15), 1100, accent, 0.30)
-    _paste_glow(bg, int(SLIDE_W * 0.65), int(SLIDE_H * 0.90), 1300, secondary, 0.40)
-    bg = bg.filter(ImageFilter.GaussianBlur(70))
+    _paste_glow(bg, int(SLIDE_W * 0.32), int(SLIDE_H * 0.28), 1500, primary, 0.75)
+    _paste_glow(bg, int(SLIDE_W * 0.88), int(SLIDE_H * 0.12), 1150, accent, 0.55)
+    _paste_glow(bg, int(SLIDE_W * 0.72), int(SLIDE_H * 0.92), 1350, secondary, 0.60)
+    _paste_glow(bg, int(SLIDE_W * 0.60), int(SLIDE_H * 0.55), 950, accent, 0.30)
+    bg = bg.filter(ImageFilter.GaussianBlur(72))
 
     if photo_url:
         try:
@@ -152,12 +166,15 @@ def _make_background(theme: dict, photo_url: str | None = None) -> Image.Image:
             from io import BytesIO
             photo = Image.open(BytesIO(resp.content)).convert("RGB")
             photo = ImageOps.fit(photo, (SLIDE_W, SLIDE_H), Image.LANCZOS)
-            overlay = Image.new("RGB", (SLIDE_W, SLIDE_H), (0, 0, 0))
-            photo = Image.blend(photo, overlay, 0.62)
-            bg = Image.blend(bg, photo, 0.85)
+            # 1) assombrir la photo pour la lisibilité du texte blanc
+            photo = Image.blend(photo, Image.new("RGB", (SLIDE_W, SLIDE_H), (0, 0, 0)), 0.45)
+            # 2) teinter avec le dégradé du thème -> la photo épouse la couleur du thème
+            bg = Image.blend(photo, bg, 0.5)
         except Exception as e:
-            print(f"[render] photo ignorée (raison: {e})")
+            print(f"[render] photo ignorée, fallback dégradé (raison: {e})")
 
+    # Voile sombre à gauche pour le contraste du texte (après la photo).
+    bg = _apply_left_shade(bg)
     # On garde le fond en RGB : le blending alpha de Pillow (Draw(im, "RGBA"))
     # ne s'active que lorsqu'on dessine SUR une image RGB.
     return bg
@@ -166,11 +183,11 @@ def _make_background(theme: dict, photo_url: str | None = None) -> Image.Image:
 # --------------------------------------------------------------------------- #
 # Pexels (style photo)
 # --------------------------------------------------------------------------- #
-def fetch_pexels_photo(category: str) -> str | None:
+def fetch_pexels_photo(query: str) -> str | None:
     api_key = os.environ.get("PEXELS_API_KEY")
     if not api_key:
         return None
-    query = PEXELS_QUERY_BY_CATEGORY.get(category, "food industry")
+    query = query or "food safety industry"
     try:
         r = requests.get(
             "https://api.pexels.com/v1/search",
@@ -294,6 +311,8 @@ def _base_slide(theme, accent, date_str, photo_url, page_idx, author_name,
     base = _make_background(theme, photo_url)
     _paste_logo(base, 620, ((SLIDE_W - 620) // 2, (SLIDE_H - 620) // 2), opacity=0.06)
     draw = ImageDraw.Draw(base, "RGBA")
+    # Bande d'accent verticale à gauche (signature éditoriale)
+    draw.rectangle([0, 0, 7, SLIDE_H], fill=accent + (255,))
     _draw_eyebrow(draw, base, accent, date_str, theme["name"])
     _draw_stamp(base, accent, risk_label, risk_sub)
     _draw_footer(base, draw, author_name, page_idx, 3)
@@ -316,10 +335,13 @@ def _slide_hook(ctx):
     lines = _wrap(draw, ctx["headline"], hl_font, 1080)
     y = _draw_lines(draw, lines, (64, 340), hl_font, PAPER, 92)
 
+    # soulignement d'accent sous le titre
+    draw.line([(66, y + 22), (286, y + 22)], fill=accent + (255,), width=6)
+
     # kicker
     k_font = _font("mono", 22, "Medium")
     kb_font = _font("mono", 22, "Bold")
-    ky = y + 40
+    ky = y + 58
     kx = 64
     for label, val in [("SOURCE", ctx["source"]), ("ZONE", ctx["country"]),
                        ("CATÉGORIE", ctx["category_label"])]:
@@ -361,11 +383,11 @@ def _slide_detail(ctx):
         f_lines = _wrap(draw, fact, fact_font, left_w - 70)
         y = _draw_lines(draw, f_lines, (64 + 64, y), fact_font, PAPER, 40) + 18
 
-    # panneau récap (droite)
+    # panneau récap (droite) — placé sous le tampon pour éviter le chevauchement
     px0 = SLIDE_W - 64 - 460
-    _panel(draw, [px0, 250, SLIDE_W - 64, 690], radius=20)
-    _section_title(draw, "Résumé rapide", (px0 + 32, 284), accent)
-    ry = 340
+    _panel(draw, [px0, 412, SLIDE_W - 64, 812], radius=20)
+    _section_title(draw, "Résumé rapide", (px0 + 32, 446), accent)
+    ry = 502
     sm = _font("sans", 24, "Regular")
     smb = _font("sans", 24, "SemiBold")
     for label, val, col in [("Source", ctx["source"], PAPER),
@@ -433,13 +455,17 @@ def render_article_to_pdf(item, author_name: str, style: str, out_dir: Path,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     copy = generate_copy(item, editorial_angle=theme.get("editorial_angle", ""))
-    accent = _hex_to_rgb(ACCENT.get(item.risk_level, ACCENT["MEDIUM"]))
+    # L'accent suit le THÈME (cohérence chromatique) et non le risque : le niveau
+    # de risque reste communiqué par le tampon et le champ « Niveau ».
+    accent = _hex_to_rgb(theme["accent"])
     risk_label, risk_sub = RISK_LABELS.get(item.risk_level, RISK_LABELS["MEDIUM"])
     category_label = CATEGORY_LABELS.get(item.category, "Sécurité des aliments")
 
     photo_url = None
     if style == "photo":
-        photo_url = fetch_pexels_photo(item.category)
+        # Photo adaptée au THÈME (requête dédiée dans themes.py), avec repli catégorie.
+        photo_query = theme.get("pexels_query") or PEXELS_QUERY_BY_CATEGORY.get(item.category, "food industry")
+        photo_url = fetch_pexels_photo(photo_query)
 
     def base_ctx(page_idx):
         return dict(

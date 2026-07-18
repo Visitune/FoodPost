@@ -34,6 +34,10 @@ en Europe. Ton lectorat : responsables qualité, RSE, auditeurs IFS/BRC, industr
 agroalimentaires. Ton sérieux, factuel, jamais sensationnaliste. Tu reformules \
 TOUJOURS avec tes propres mots (jamais de copier-coller du texte source).
 
+RÈGLE ABSOLUE : tu écris TOUJOURS en FRANÇAIS, même si la source est en anglais \
+ou dans une autre langue — tu traduis et reformules en français impeccable. \
+Aucun mot d'anglais, aucune balise HTML dans ta réponse.
+
 {editorial_context}
 
 Réponds UNIQUEMENT en JSON valide, sans texte autour, avec ce schéma exact :

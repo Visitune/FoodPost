@@ -6,6 +6,8 @@ utilisés par la version navigateur de VISIwatch.
 from __future__ import annotations
 
 import datetime as dt
+import html
+import re
 from dataclasses import dataclass, field
 
 import requests
@@ -14,6 +16,21 @@ import feedparser
 from config import RAPPELCONSO_URL, OPENFDA_URL, RSS_SOURCES, LOOKBACK_HOURS
 
 HEADERS = {"User-Agent": "veille-foodsafety-linkedin/1.0"}
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def clean_html(text: str) -> str:
+    """Retire les balises HTML et décode les entités (&#xa0;, &amp;...).
+
+    Beaucoup de flux RSS renvoient du HTML dans le résumé ; sans nettoyage on
+    retrouve des `<p>` et `&#xa0;` bruts sur les diapos.
+    """
+    if not text:
+        return ""
+    text = _TAG_RE.sub(" ", text)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 @dataclass
@@ -60,8 +77,8 @@ def fetch_rappelconso(hours: int = LOOKBACK_HOURS) -> list[RawItem]:
             continue
         items.append(
             RawItem(
-                title=rec.get("noms_de_marques_du_produit") or rec.get("libelle", "Rappel produit"),
-                summary=rec.get("motif_du_rappel", "") or rec.get("risques_encourus_par_le_consommateur", ""),
+                title=clean_html(rec.get("noms_de_marques_du_produit") or rec.get("libelle", "Rappel produit")),
+                summary=clean_html(rec.get("motif_du_rappel", "") or rec.get("risques_encourus_par_le_consommateur", "")),
                 source="RappelConso",
                 url=rec.get("lien_vers_la_fiche_rappel", "https://rappel.conso.gouv.fr"),
                 published=pub,
@@ -101,8 +118,8 @@ def fetch_openfda(hours: int = LOOKBACK_HOURS) -> list[RawItem]:
             continue
         items.append(
             RawItem(
-                title=f"{rec.get('product_description', 'Produit')[:120]} — {rec.get('recalling_firm', '')}",
-                summary=rec.get("reason_for_recall", ""),
+                title=clean_html(f"{rec.get('product_description', 'Produit')[:120]} — {rec.get('recalling_firm', '')}"),
+                summary=clean_html(rec.get("reason_for_recall", "")),
                 source="OpenFDA",
                 url=f"https://www.fda.gov/safety/recalls-market-withdrawals-safety-alerts",
                 published=pub,
@@ -133,8 +150,8 @@ def fetch_rss(name: str, url: str, hours: int = LOOKBACK_HOURS) -> list[RawItem]
             continue
         items.append(
             RawItem(
-                title=entry.get("title", ""),
-                summary=entry.get("summary", ""),
+                title=clean_html(entry.get("title", "")),
+                summary=clean_html(entry.get("summary", "")),
                 source=name,
                 url=entry.get("link", url),
                 published=pub,

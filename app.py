@@ -154,6 +154,19 @@ with st.sidebar:
     max_items = st.slider("Articles par run", 1, 3, 2)
     use_demo = st.checkbox("Mode démo (données fictives)", value=True)
 
+    # État des clés (explique pourquoi le texte peut rester en anglais / sans photo)
+    if not os.environ.get("GROQ_API_KEY"):
+        st.warning(
+            "Pas de clé **GROQ_API_KEY** → rédaction basique : le texte peut rester "
+            "dans la langue de la source (ex. anglais). Ajoute la clé dans "
+            "**Settings → Secrets** pour une rédaction propre **en français**."
+        )
+    if style == "photo" and not os.environ.get("PEXELS_API_KEY"):
+        st.info(
+            "Style **photo** sans **PEXELS_API_KEY** → fond dégradé par défaut. "
+            "Ajoute la clé Pexels (gratuite) dans les Secrets pour de vraies photos."
+        )
+
     st.markdown("---")
     st.markdown("#### Thème du jour")
     today_theme = get_theme()
