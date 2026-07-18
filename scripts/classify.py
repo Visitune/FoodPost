@@ -132,8 +132,14 @@ def select_top_items(raw_items: list[RawItem], max_items: int = MAX_ITEMS_PER_RU
     scored = _dedupe(scored)
     scored.sort(key=lambda x: x.score, reverse=True)
 
-    # 4. Sélection exigeante : on ne retient QUE ce qui est vraiment "postable" —
-    #    soit ALARMANT (CRITICAL/HIGH), soit RÉCURRENT/à fort enjeu éditorial
+    # Thème imposé : l'utilisateur a explicitement choisi ce sujet -> on donne les
+    # meilleurs articles de la catégorie SANS le filtre d'exigence (sinon un thème
+    # peu « alarmant » ce jour-là ne ramènerait rien).
+    if category is not None:
+        return scored[:max_items]
+
+    # 4. Mode Auto : sélection exigeante — on ne retient QUE ce qui est vraiment
+    #    "postable" : ALARMANT (CRITICAL/HIGH), RÉCURRENT, ou à fort enjeu éditorial
     #    (interest >= seuil). Un rappel produit isolé et banal est écarté.
     def worth_posting(s: ScoredItem) -> bool:
         alarming = s.risk_level in ("CRITICAL", "HIGH")
@@ -141,10 +147,6 @@ def select_top_items(raw_items: list[RawItem], max_items: int = MAX_ITEMS_PER_RU
         return alarming or recurrent or s.interest >= MIN_INTEREST_SCORE
 
     pool = [s for s in scored if worth_posting(s)]  # trié par score décroissant
-
-    # Thème imposé : déjà filtré sur la catégorie -> on prend les meilleurs.
-    if category is not None:
-        return pool[:max_items]
 
     # Mode Auto : diversifier les catégories pour éviter un carrousel monothématique
     # (ex. une semaine "tout Listeria" ne doit pas donner 3 fois le même sujet).

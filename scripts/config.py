@@ -17,8 +17,10 @@ OPENFDA_URL = "https://api.fda.gov/food/enforcement.json"
 
 # Flux RSS. A ajuster librement : ce sont de simples URLs, pas de code à toucher.
 RSS_SOURCES = {
-    "RASFF": "https://webgate.ec.europa.eu/rasff-window/screen/rss",
+    "RASFF": "https://webgate.ec.europa.eu/rasff-window/screen/rss",  # souvent vide (RSS déprécié)
     "FoodSafetyNews": "https://www.foodsafetynews.com/feed/",
+    "EFSA": "https://www.efsa.europa.eu/en/news/rss",
+    "Food Safety Magazine": "https://www.food-safety.com/rss/articles",
     "LegiFrance (agro)": "https://legifrss.org/rss/jorf.xml",
 }
 
@@ -32,6 +34,8 @@ KEYWORDS_AGRO = [
     "eau", "environnement", "bio", "durable", "aoc", "aop", "label",
     "additif", "emballage", "bactérie", "bacterie", "lait", "viande",
     "vin", "food", "recall", "contamination", "listeria", "salmonella",
+    # termes anglais (EFSA, Food Safety Magazine)
+    "safety", "allergen", "pesticide", "outbreak", "hazard", "efsa", "hygiene",
 ]
 
 # ---------------------------------------------------------------------------
@@ -90,6 +94,10 @@ INTEREST_KEYWORDS = [
     "non déclaré", "non declare", "non déclarée", "non declaree", "tromperie",
     # récurrence explicite
     "récurrent", "recurrent", "systémique", "systemique", "en hausse",
+    # signaux anglais (EFSA, Food Safety Magazine, FoodSafetyNews)
+    "outbreak", "recall", "recalled", "warning", "illness", "hospitaliz",
+    "death", "nationwide", "multistate", "ban", "regulation", "guidance",
+    "study", "report", "assessment", "contamination", "undeclared",
 ]
 INTEREST_WEIGHT = 8          # points par signal d'intérêt trouvé
 
@@ -104,13 +112,22 @@ MIN_INTEREST_SCORE = 12
 # CATEGORISATION VISUELLE (pour choisir l'iconographie / le thème des diapos)
 # ---------------------------------------------------------------------------
 
+# Mots-clés FR + EN (les sources EFSA / Food Safety Magazine sont en anglais).
 CATEGORY_RULES = {
-    "biologique": ["listeria", "salmonella", "e.coli", "e. coli", "bactérie", "bacterie", "botulis"],
-    "allergene": ["allergène", "allergene", "gluten", "lait", "arachide", "fruits à coque"],
-    "corps_etranger": ["verre", "glass", "métal", "metal", "plastique", "corps étranger"],
-    "chimique": ["pesticide", "mycotoxine", "mercure", "cyanure", "toxine", "toxin"],
-    "reglementaire": ["décret", "decret", "loi", "jorf", "arrêté", "arrete", "règlement"],
-    "fraude": ["fraude", "tromperie", "étiquetage", "etiquetage"],
+    "biologique": ["listeria", "salmonella", "e.coli", "e. coli", "bactérie", "bacterie",
+                   "botulis", "listeriosis", "salmonellosis", "norovirus", "campylobacter",
+                   "pathogen", "bacteria", "outbreak"],
+    "allergene": ["allergène", "allergene", "gluten", "lait", "arachide", "fruits à coque",
+                  "allergen", "undeclared", "milk", "peanut", "soy", "egg", "sesame", "tree nut"],
+    "corps_etranger": ["verre", "glass", "métal", "metal", "plastique", "plastic",
+                       "corps étranger", "foreign body", "foreign material"],
+    "chimique": ["pesticide", "mycotoxine", "mercure", "cyanure", "toxine", "toxin",
+                 "mycotoxin", "heavy metal", "chemical", "residue", "contaminant",
+                 "lead", "dioxin", "aflatoxin", "histamine"],
+    "reglementaire": ["décret", "decret", "loi", "jorf", "arrêté", "arrete", "règlement",
+                      "regulation", "directive", "guidance", "legislation", "compliance", "law"],
+    "fraude": ["fraude", "tromperie", "étiquetage", "etiquetage", "fraud", "adulteration",
+               "authenticity", "counterfeit", "mislabel", "food crime"],
 }
 
 # Nombre d'articles retenus par run (1 ou 2, selon la consigne)
