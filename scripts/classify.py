@@ -4,11 +4,13 @@ Filtrage, classification et scoring : détermine quels articles sont
 """
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from config import (
     KEYWORDS_AGRO, RISK_KEYWORDS, RISK_WEIGHT, SEVERITY_BOOST_WORDS,
     CATEGORY_RULES, MAX_ITEMS_PER_RUN,
+    INTEREST_KEYWORDS, INTEREST_WEIGHT, RECURRENCE_WEIGHT, MIN_INTEREST_SCORE,
 )
 from sources import RawItem
 
@@ -24,6 +26,7 @@ class ScoredItem:
     risk_level: str
     category: str
     score: int
+    interest: int = 0  # score d'intérêt éditorial (ampleur, récurrence, enjeu)
 
 
 def _text(item: RawItem) -> str:
@@ -65,6 +68,17 @@ def score_item(item: RawItem, risk_level: str) -> int:
     return score
 
 
+def interest_score(item: RawItem, category: str, category_counts: Counter) -> int:
+    """Mesure l'intérêt éditorial d'un item, indépendamment de sa gravité brute :
+    ampleur/diffusion, dimension épidémique, enjeu réglementaire/fraude, et
+    récurrence de la catégorie sur la période (signal de tendance)."""
+    t = _text(item)
+    hits = sum(1 for w in INTEREST_KEYWORDS if w in t)
+    score = INTEREST_WEIGHT * hits
+    score += RECURRENCE_WEIGHT * max(0, category_counts.get(category, 0) - 1)
+    return score
+
+
 def _dedupe(items: list[ScoredItem]) -> list[ScoredItem]:
     seen = set()
     out = []
@@ -78,13 +92,21 @@ def _dedupe(items: list[ScoredItem]) -> list[ScoredItem]:
 
 
 def select_top_items(raw_items: list[RawItem], max_items: int = MAX_ITEMS_PER_RUN) -> list[ScoredItem]:
-    scored = []
+    # 1. Filtrage agro + pré-classification (nécessaire pour compter les récurrences)
+    prelim = []
     for item in raw_items:
         if not is_agro_relevant(item):
             continue
-        risk = classify_risk(item)
-        cat = classify_category(item)
-        s = score_item(item, risk)
+        prelim.append((item, classify_risk(item), classify_category(item)))
+
+    # 2. Récurrence : combien de fois chaque catégorie apparaît sur la période
+    category_counts = Counter(cat for _, _, cat in prelim)
+
+    # 3. Scoring : gravité (score) + intérêt éditorial (interest)
+    scored = []
+    for item, risk, cat in prelim:
+        inter = interest_score(item, cat, category_counts)
+        base = score_item(item, risk)
         scored.append(
             ScoredItem(
                 title=item.title.strip(),
@@ -95,14 +117,22 @@ def select_top_items(raw_items: list[RawItem], max_items: int = MAX_ITEMS_PER_RU
                 country=item.country or "Europe",
                 risk_level=risk,
                 category=cat,
-                score=s,
+                score=base + inter,
+                interest=inter,
             )
         )
+
     scored = _dedupe(scored)
     scored.sort(key=lambda x: x.score, reverse=True)
 
-    # On ne garde que du CRITICAL/HIGH pour respecter la consigne
-    # "très impactant" ; fallback sur MEDIUM si rien de mieux ce jour-là.
-    strong = [s for s in scored if s.risk_level in ("CRITICAL", "HIGH")]
-    pool = strong if strong else scored
+    # 4. Sélection exigeante : on ne retient QUE ce qui est vraiment "postable" —
+    #    soit ALARMANT (CRITICAL/HIGH), soit RÉCURRENT/à fort enjeu éditorial
+    #    (interest >= seuil). Un rappel produit isolé et banal est écarté.
+    def worth_posting(s: ScoredItem) -> bool:
+        alarming = s.risk_level in ("CRITICAL", "HIGH")
+        recurrent = category_counts.get(s.category, 0) >= 2
+        return alarming or recurrent or s.interest >= MIN_INTEREST_SCORE
+
+    pool = [s for s in scored if worth_posting(s)]
+    # Rien d'assez intéressant sur la période -> on ne poste rien (comportement voulu).
     return pool[:max_items]

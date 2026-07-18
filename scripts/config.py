@@ -68,6 +68,39 @@ SEVERITY_BOOST_WORDS = [
 ]
 
 # ---------------------------------------------------------------------------
+# INTÉRÊT ÉDITORIAL — au-delà de la gravité brute
+# ---------------------------------------------------------------------------
+# Un simple rappel produit isolé, s'il n'est ni alarmant ni récurrent, n'a pas
+# d'intérêt pour une audience d'auditeurs/qualiticiens. Ces signaux repèrent ce
+# qui vaut vraiment la peine d'être commenté : ampleur, dimension épidémique,
+# enjeu réglementaire/systémique, fraude, étude/rapport.
+INTEREST_KEYWORDS = [
+    # ampleur / diffusion
+    "plusieurs pays", "multi-pays", "national", "europe", "union européenne",
+    "rappel massif", "plusieurs lots", "grande distribution",
+    # dimension épidémique / sanitaire lourde
+    "hospitalis", "décès", "deces", "mort", "épidémie", "epidemie",
+    "cluster", "cas groupés", "cas groupes", "toxi-infection", "tiac", "foyer",
+    # dimension systémique / réglementaire / enquête
+    "étude", "etude", "efsa", "anses", "enquête", "enquete", "rapport",
+    "tendance", "nouveau règlement", "nouveau reglement", "règlement", "reglement",
+    "directive", "décret", "decret", "norme", "audit",
+    # fraude / authenticité
+    "fraude", "adultération", "adulteration", "authenticité", "authenticite",
+    "non déclaré", "non declare", "non déclarée", "non declaree", "tromperie",
+    # récurrence explicite
+    "récurrent", "recurrent", "systémique", "systemique", "en hausse",
+]
+INTEREST_WEIGHT = 8          # points par signal d'intérêt trouvé
+
+# Récurrence : une même catégorie qui revient sur la période = tendance à commenter.
+RECURRENCE_WEIGHT = 14       # points par occurrence supplémentaire de la catégorie
+
+# Seuil d'intérêt minimal pour retenir un item "non alarmant" (MEDIUM/LOW).
+# En dessous, on considère que c'est un rappel banal et on ne le retient pas.
+MIN_INTEREST_SCORE = 12
+
+# ---------------------------------------------------------------------------
 # CATEGORISATION VISUELLE (pour choisir l'iconographie / le thème des diapos)
 # ---------------------------------------------------------------------------
 
