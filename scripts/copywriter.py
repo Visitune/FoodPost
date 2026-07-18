@@ -74,18 +74,26 @@ générique — mais JAMAIS au prix du sens d'un concept composé (voir glossair
 - Aucune balise HTML, pas de copier-coller de la source (tu reformules).
 - Sois CONCRET et informatif : pas de généralités vagues ni de mots-clés isolés.
 
-GLOSSAIRE MÉTIER (EN → FR) à respecter scrupuleusement :
+GLOSSAIRE MÉTIER (EN → FR), aligné sur la terminologie officielle IFS Food v8 / BRCGS, \
+à respecter scrupuleusement :
 food safety = sécurité des aliments · food safety culture = culture de sécurité des aliments · \
 food safety management system = système de management de la sécurité des aliments · \
-food fraud = fraude alimentaire · food defense = food defense (défense alimentaire) · \
+food fraud = fraude alimentaire · food defense/defence = défense alimentaire · \
 foreign body = corps étranger · cross-contamination = contamination croisée · \
-allergen = allergène · undeclared allergen = allergène non déclaré · traceability = traçabilité · \
-recall = rappel · withdrawal = retrait · shelf life = durée de vie (DLC/DDM) · \
-ready-to-eat (RTE) = prêt à consommer (PAM) · foodborne outbreak = toxi-infection alimentaire (TIAC) · \
-prerequisite programme (PRP) = programme prérequis (PRP) · due diligence = diligence raisonnable · \
+allergen = allergène · undeclared allergen = allergène non déclaré · \
+allergen management = maîtrise des allergènes · traceability = traçabilité · \
+recall = rappel · withdrawal = retrait · non-conforming product = produit non conforme · \
+corrective action = action corrective · hazard analysis / HACCP = analyse des dangers / analyse HACCP · \
+prerequisite programme (PRP) = programme prérequis (PRP) · \
+pest control = surveillance et contrôle des nuisibles · \
+cleaning and disinfection = nettoyage et désinfection · internal audit = audit interne · \
+management review = revue de direction · calibration = étalonnage · \
+shelf life = durée de vie (DLC/DDM) · ready-to-eat (RTE) = prêt à consommer (PAM) · \
+foodborne outbreak = toxi-infection alimentaire (TIAC) · due diligence = diligence raisonnable · \
 best practices = bonnes pratiques · hazard = danger · risk = risque.
-Pour tout autre terme technique absent de ce glossaire : traduis-le fidèlement et garde sa \
-précision (ne le remplace pas par un terme vague).
+IMPORTANT : « sécurité des aliments » (food safety), JAMAIS « sécurité alimentaire » (qui \
+désigne l'accès à la nourriture, food security). Pour tout autre terme technique absent de ce \
+glossaire : traduis-le fidèlement et garde sa précision (ne le remplace pas par un terme vague).
 
 {editorial_context}
 
