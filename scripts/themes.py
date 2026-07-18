@@ -113,7 +113,7 @@ THEMES = [
             "linear-gradient(140deg, #0A0F14 0%, #101820 40%, #080C10 100%)"
         ),
         "pexels_query": "food factory production line safety inspection",
-        "editorial_angle": "Corps étrangers, safety, HACCP, contrôles physiques, metaux",
+        "editorial_angle": "Corps étrangers, sécurité, HACCP, contrôles physiques, métaux",
         "headline_prefix": "",
         "category_hints": ["corps_etranger"],
     },
@@ -131,7 +131,7 @@ THEMES = [
             "linear-gradient(135deg, #08050F 0%, #0E0818 40%, #06040C 100%)"
         ),
         "pexels_query": "food industry trends analysis modern",
-        "editorial_angle": "Tendances sectorielles, analyses croisées, veille stratégique food safety",
+        "editorial_angle": "Tendances sectorielles, analyses croisées, veille stratégique sécurité des aliments",
         "headline_prefix": "",
         "category_hints": [],
     },
@@ -152,6 +152,24 @@ def get_theme_by_id(theme_id: str) -> dict:
         if t["id"] == theme_id:
             return t
     return THEMES[0]
+
+
+# Correspondance catégorie d'article -> thème visuel, pour que les couleurs et
+# l'angle éditorial soient TOUJOURS cohérents avec le contenu de l'article.
+_CATEGORY_TO_THEME = {
+    "biologique": "listeria",
+    "allergene": "allergenes",
+    "fraude": "fraude",
+    "chimique": "chimique",
+    "reglementaire": "reglementaire",
+    "corps_etranger": "corps_etranger",
+    "autre": "alerte_generale",
+}
+
+
+def get_theme_for_category(category: str) -> dict:
+    """Thème visuel cohérent avec la catégorie de l'article (pas la date)."""
+    return get_theme_by_id(_CATEGORY_TO_THEME.get(category, "alerte_generale"))
 
 
 def get_all_themes() -> list[dict]:

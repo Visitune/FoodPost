@@ -21,7 +21,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 
 from icons import CATEGORY_LABELS, RISK_LABELS
-from themes import get_theme
+from themes import get_theme_for_category
 
 ROOT = Path(__file__).parent.parent
 FONTS_DIR = ROOT / "assets" / "fonts"
@@ -488,13 +488,15 @@ def render_article_to_pdf(item, author_name: str, style: str, out_dir: Path,
     """style: 'photo' ou 'graphic'. theme: dict du thème visuel. Retourne le chemin du PDF."""
     from copywriter import generate_copy
 
+    # Par défaut, le thème découle de la CATÉGORIE de l'article (cohérence
+    # visuelle + éditoriale). Un thème explicite (choix manuel) reste prioritaire.
     if theme is None:
-        theme = get_theme()
+        theme = get_theme_for_category(item.category)
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    copy = generate_copy(item, editorial_angle=theme.get("editorial_angle", ""))
+    copy = generate_copy(item)
     # L'accent suit le THÈME (cohérence chromatique) et non le risque : le niveau
     # de risque reste communiqué par le tampon et le champ « Niveau ».
     accent = _hex_to_rgb(theme["accent"])

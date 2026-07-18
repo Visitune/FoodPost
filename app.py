@@ -31,7 +31,7 @@ try:
 except Exception:
     pass
 
-from themes import get_all_themes, get_theme, get_theme_by_id
+from themes import get_all_themes, get_theme_by_id
 from classify import select_top_items
 from sources import RawItem, fetch_all
 from render_slides import render_article_to_pdf
@@ -146,8 +146,12 @@ with st.sidebar:
     theme_names = [t["name"] for t in theme_list]
     theme_ids = [t["id"] for t in theme_list]
 
-    selected_theme_name = st.selectbox("Thème visuel", theme_names, index=0)
-    selected_theme_id = theme_ids[theme_names.index(selected_theme_name)]
+    AUTO_LABEL = "Auto (selon l'article)"
+    selected_theme_name = st.selectbox("Thème visuel", [AUTO_LABEL] + theme_names, index=0)
+    if selected_theme_name == AUTO_LABEL:
+        selected_theme = None  # chaque article prendra le thème de sa catégorie
+    else:
+        selected_theme = get_theme_by_id(theme_ids[theme_names.index(selected_theme_name)])
 
     style = st.radio("Style de fond", ["graphic", "photo"], horizontal=True)
     author = st.text_input("Ton nom", value="VisiPilot")
@@ -183,10 +187,11 @@ with st.sidebar:
         )
 
     st.markdown("---")
-    st.markdown("#### Thème du jour")
-    today_theme = get_theme()
-    st.markdown(f"**{today_theme['name']}**")
-    st.caption(today_theme['editorial_angle'])
+    st.caption(
+        "En mode **Auto**, chaque article prend le thème de sa catégorie "
+        "(couleurs et angle cohérents avec le contenu). Choisis un thème précis "
+        "pour forcer le même style sur tous les articles."
+    )
 
 # --- MAIN ---
 col1, col2 = st.columns([1, 1])
@@ -198,13 +203,15 @@ with col1:
         with st.spinner("Génération en cours…"):
             try:
                 results = generate(
-                    theme=get_theme_by_id(selected_theme_id),
+                    theme=selected_theme,
                     style=style, author=author,
                     max_items=max_items, use_demo=use_demo,
                 )
                 if results:
                     st.session_state["generated"] = results
-                    st.session_state["theme_name"] = get_theme_by_id(selected_theme_id)["name"]
+                    st.session_state["theme_name"] = (
+                        selected_theme["name"] if selected_theme else "Automatique (selon l'article)"
+                    )
                     st.success(f"{len(results)} PDF généré(s) !")
                 else:
                     st.warning(

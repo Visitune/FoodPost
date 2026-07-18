@@ -14,7 +14,7 @@ from classify import select_top_items
 from sources import fetch_all, RawItem
 from render_slides import render_article_to_pdf
 from notify_email import send_notification
-from themes import get_theme, get_all_themes
+from themes import get_all_themes, get_theme_by_id
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
@@ -54,14 +54,13 @@ def _demo_items() -> list[RawItem]:
 def run(demo: bool, style: str, author_name: str, max_items: int, theme_id: str | None = None):
     OUTPUT_DIR.mkdir(exist_ok=True)
 
-    if theme_id:
-        from themes import get_theme_by_id
-        theme = get_theme_by_id(theme_id)
+    # Thème forcé uniquement si --theme est fourni ; sinon chaque article prend
+    # le thème de SA catégorie (cohérence visuelle/éditoriale avec le contenu).
+    forced_theme = get_theme_by_id(theme_id) if theme_id else None
+    if forced_theme:
+        print(f"[main] Thème forcé : {forced_theme['name']}")
     else:
-        theme = get_theme()
-
-    print(f"[main] Thème du jour : {theme['name']}")
-    print(f"[main]   > {theme['editorial_angle']}")
+        print("[main] Thème automatique selon la catégorie de chaque article")
 
     raw_items = _demo_items() if demo else fetch_all()
     print(f"[main] {len(raw_items)} articles bruts récupérés")
@@ -78,7 +77,7 @@ def run(demo: bool, style: str, author_name: str, max_items: int, theme_id: str 
     pdf_paths = []
     summary_lines = []
     for i, item in enumerate(top_items, start=1):
-        pdf_path = render_article_to_pdf(item, author_name, style, OUTPUT_DIR, index=i, theme=theme)
+        pdf_path = render_article_to_pdf(item, author_name, style, OUTPUT_DIR, index=i, theme=forced_theme)
         pdf_paths.append(pdf_path)
         summary_lines.append(f"{item.title[:90]} -> {pdf_path.name}")
         print(f"[main] PDF généré : {pdf_path}")

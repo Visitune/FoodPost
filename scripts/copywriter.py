@@ -165,13 +165,14 @@ def generate_copy(item, editorial_angle: str = "") -> dict:
         return _frenchify_copy(_heuristic_copy(item, editorial_angle))
 
     try:
-        editorial_context = ""
-        if editorial_angle:
-            editorial_context = (
-                f"ANGLE ÉDITORIAL DU JOUR : {editorial_angle}. "
-                "Adapte le ton et les points d'audit en fonction de cet angle."
-            )
-
+        # On NE force PAS d'angle thématique : l'accroche, le résumé et les points
+        # d'audit doivent porter uniquement sur l'événement réel de l'article.
+        editorial_context = (
+            "IMPÉRATIF : l'accroche, le résumé ET les 3 recommandations d'audit "
+            "portent EXCLUSIVEMENT sur l'événement précis décrit ci-dessous (le "
+            "produit, le danger, le lieu, les mesures). N'introduis AUCUN sujet "
+            "absent de l'article (pas de généralités hors sujet)."
+        )
         system = SYSTEM_PROMPT.format(editorial_context=editorial_context)
         user_content = (
             f"Titre source : {item.title}\n"
