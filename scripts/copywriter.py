@@ -32,13 +32,25 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
-_FOOD_SAFETY_RE = re.compile(r"food[\s\-]?safety", re.IGNORECASE)
+
+# Garde-fou de traduction. L'ORDRE compte : on traite d'abord les concepts
+# COMPOSÉS (à préserver) avant le terme générique « food safety ».
+_FS_REPLACEMENTS = [
+    (re.compile(r"food[\s\-]?safety[\s\-]?culture", re.IGNORECASE),
+     "culture de sécurité des aliments"),
+    (re.compile(r"food[\s\-]?safety[\s\-]?management[\s\-]?system", re.IGNORECASE),
+     "système de management de la sécurité des aliments"),
+    (re.compile(r"food[\s\-]?safety", re.IGNORECASE), "sécurité des aliments"),
+]
 
 
 def _frenchify(value):
-    """Garde-fou : « food safety » doit toujours devenir « sécurité des aliments »."""
+    """Garde-fou : traduit « food safety » en préservant les concepts composés
+    (« food safety culture » = « culture de sécurité des aliments »)."""
     if isinstance(value, str):
-        return _FOOD_SAFETY_RE.sub("sécurité des aliments", value)
+        for rgx, repl in _FS_REPLACEMENTS:
+            value = rgx.sub(repl, value)
+        return value
     if isinstance(value, list):
         return [_frenchify(v) for v in value]
     return value
@@ -54,7 +66,10 @@ industriels agroalimentaires. Ton sérieux, factuel, jamais sensationnaliste.
 
 RÈGLES ABSOLUES :
 - Tu écris TOUJOURS en FRANÇAIS impeccable, même si la source est en anglais (tu traduis).
-- N'utilise JAMAIS l'expression « food safety » : écris TOUJOURS « sécurité des aliments ».
+- « food safety » se traduit « sécurité des aliments ». MAIS préserve les concepts composés : \
+« food safety culture » = « culture de sécurité des aliments » (concept clé des référentiels \
+IFS/BRCGS) — ne le réduis JAMAIS à « sécurité des aliments ». De même « food safety management \
+system » = « système de management de la sécurité des aliments ».
 - Aucune balise HTML, pas de copier-coller de la source (tu reformules).
 - Sois CONCRET et informatif : pas de généralités vagues ni de mots-clés isolés.
 
