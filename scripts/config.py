@@ -10,7 +10,7 @@ mais côté serveur (Python), donc sans les soucis de CORS rencontrés côté na
 
 RAPPELCONSO_URL = (
     "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/"
-    "rappelconso-v2-gtin-espaces/records"
+    "rappelconso-v2-gtin-espaces"
 )
 
 OPENFDA_URL = "https://api.fda.gov/food/enforcement.json"

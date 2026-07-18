@@ -49,11 +49,16 @@ def _cutoff(hours: int = LOOKBACK_HOURS) -> dt.datetime:
 
 
 def fetch_rappelconso(hours: int = LOOKBACK_HOURS) -> list[RawItem]:
-    """RappelConso (DGCCRF/DGAL) - rappels de produits en France."""
+    """RappelConso (DGCCRF/DGAL) - rappels de produits alimentaires en France.
+
+    Dataset Opendatasoft v2.1 « rappelconso-v2-gtin-espaces ». Champs v2 :
+    date_publication, motif_rappel, risques_encourus, sous_categorie_produit,
+    marque_produit, libelle, lien_vers_la_fiche_rappel.
+    """
     params = {
-        "lang": "fr",
         "limit": 50,
-        "order_by": "date_de_publication desc",
+        "order_by": "date_publication desc",
+        "where": 'categorie_produit="alimentation"',  # aliments uniquement
     }
     try:
         r = requests.get(RAPPELCONSO_URL + "/records", params=params, headers=HEADERS, timeout=20)
@@ -66,7 +71,7 @@ def fetch_rappelconso(hours: int = LOOKBACK_HOURS) -> list[RawItem]:
     cutoff = _cutoff(hours)
     items = []
     for rec in data.get("results", []):
-        pub_raw = rec.get("date_de_publication")
+        pub_raw = rec.get("date_publication")
         if not pub_raw:
             continue
         try:
@@ -75,12 +80,24 @@ def fetch_rappelconso(hours: int = LOOKBACK_HOURS) -> list[RawItem]:
             continue
         if pub < cutoff:
             continue
+
+        marque = clean_html(rec.get("marque_produit") or "")
+        sous_cat = clean_html(rec.get("sous_categorie_produit") or "")
+        libelle = clean_html(rec.get("libelle") or "")
+        motif = clean_html(rec.get("motif_rappel") or "")
+        risques = clean_html(rec.get("risques_encourus") or "")
+
+        produit = libelle or sous_cat or "produit alimentaire"
+        title = f"Rappel {produit}" + (f" — {marque}" if marque else "")
+        # Le résumé porte le danger (motif + risques) : essentiel pour la classification.
+        summary = " ".join(p for p in [motif, risques] if p).strip() or title
+
         items.append(
             RawItem(
-                title=clean_html(rec.get("noms_de_marques_du_produit") or rec.get("libelle", "Rappel produit")),
-                summary=clean_html(rec.get("motif_du_rappel", "") or rec.get("risques_encourus_par_le_consommateur", "")),
+                title=title,
+                summary=summary,
                 source="RappelConso",
-                url=rec.get("lien_vers_la_fiche_rappel", "https://rappel.conso.gouv.fr"),
+                url=rec.get("lien_vers_la_fiche_rappel") or "https://rappel.conso.gouv.fr",
                 published=pub,
                 country="France",
                 raw=rec,

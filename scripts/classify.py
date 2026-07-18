@@ -4,7 +4,7 @@ Filtrage, classification et scoring : détermine quels articles sont
 """
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 from config import (
@@ -140,6 +140,23 @@ def select_top_items(raw_items: list[RawItem], max_items: int = MAX_ITEMS_PER_RU
         recurrent = category_counts.get(s.category, 0) >= 2
         return alarming or recurrent or s.interest >= MIN_INTEREST_SCORE
 
-    pool = [s for s in scored if worth_posting(s)]
-    # Rien d'assez intéressant sur la période -> on ne poste rien (comportement voulu).
-    return pool[:max_items]
+    pool = [s for s in scored if worth_posting(s)]  # trié par score décroissant
+
+    # Thème imposé : déjà filtré sur la catégorie -> on prend les meilleurs.
+    if category is not None:
+        return pool[:max_items]
+
+    # Mode Auto : diversifier les catégories pour éviter un carrousel monothématique
+    # (ex. une semaine "tout Listeria" ne doit pas donner 3 fois le même sujet).
+    buckets: dict[str, list[ScoredItem]] = defaultdict(list)
+    for s in pool:
+        buckets[s.category].append(s)
+    cat_order = sorted(buckets, key=lambda c: buckets[c][0].score, reverse=True)
+    result: list[ScoredItem] = []
+    i = 0
+    while len(result) < max_items and any(buckets.values()):
+        cat = cat_order[i % len(cat_order)]
+        if buckets[cat]:
+            result.append(buckets[cat].pop(0))
+        i += 1
+    return result
