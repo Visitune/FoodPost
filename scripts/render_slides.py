@@ -37,13 +37,14 @@ PAPER_DIM = (175, 192, 190)   # #AFC0BE
 # Fixe (et non généré par l'IA) pour un branding cohérent d'un post à l'autre.
 VISIPILOT_CTA = {
     "kicker": "VISIPILOT · VEILLE · IA · DIGITALISATION",
-    "headline": "La veille food safety, augmentée par l'IA",
+    "headline": "La veille sécurité des aliments, augmentée par l'IA",
     "services": [
         "Veille réglementaire & sanitaire en continu",
         "Outils IA pour la qualité et vos audits",
         "Digitalisation de vos process (IFS, BRCGS, HACCP)",
     ],
-    "cta": "Découvrez nos solutions sur visipilot.com",
+    "cta": "Découvrez nos solutions",
+    "url": "www.visipilot.com",
 }
 
 PEXELS_QUERY_BY_CATEGORY = {
@@ -249,7 +250,7 @@ def _draw_eyebrow(draw, base, accent, date_str, theme_name):
     x, y = 64, 60
     draw.ellipse([x, y + 6, x + 12, y + 18], fill=accent)
     mono = _font("mono", 20, "Medium")
-    label = f"VEILLE FOOD SAFETY  ·  {date_str}"
+    label = f"VEILLE SÉCURITÉ DES ALIMENTS  ·  {date_str}"
     draw.text((x + 26, y), label, font=mono, fill=PAPER_DIM)
     lx = x + 26 + draw.textlength(label, font=mono) + 28
     # tag thème
@@ -266,7 +267,7 @@ def _draw_footer(base, draw, author_name, page_idx, page_total):
     brand_font = _font("mono", 20, "Medium")
     draw.text((196, y + 6), f"{author_name}", font=_font("mono", 21, "Bold"), fill=PAPER)
     draw.text((196 + draw.textlength(author_name, font=_font('mono', 21, 'Bold')) + 10, y + 8),
-              "— Consultant & auditeur food safety", font=brand_font, fill=PAPER_DIM)
+              "— Consultant & auditeur sécurité des aliments", font=brand_font, fill=PAPER_DIM)
     page_txt = f"{page_idx} / {page_total}"
     draw.text((SLIDE_W - 64 - draw.textlength(page_txt, font=brand_font), y + 8),
               page_txt, font=brand_font, fill=PAPER_DIM)
@@ -378,23 +379,32 @@ def _slide_detail(ctx):
     accent = ctx["accent"]
     left_w = 1050
 
-    _section_title(draw, "Ce qu'il s'est passé", (64, 240), accent)
-    body_font = _font("sans", 34, "Medium")
+    _section_title(draw, "Ce qu'il s'est passé", (64, 232), accent)
+    body_font = _font("sans", 30, "Medium")
     body_lines = _wrap(draw, ctx["body_text"], body_font, left_w)
-    y = _draw_lines(draw, body_lines, (64, 288), body_font, PAPER, 50)
+    y = _draw_lines(draw, body_lines, (64, 278), body_font, PAPER, 44)
 
-    y += 24
+    y += 20
     draw.line([(64, y), (64 + left_w, y)], fill=accent + (180,), width=2)
-    y += 40
+    y += 34
 
     _section_title(draw, "Points clés pour vos audits", (64, y), accent)
-    y += 52
-    fact_font = _font("sans", 28, "Regular")
-    marker_font = _font("mono", 24, "Bold")
+    y += 48
+    fact_font = _font("sans", 26, "Regular")
+    marker_font = _font("mono", 22, "Bold")
     for i, fact in enumerate(ctx["facts"], start=1):
         draw.text((64, y + 2), f"{i:02d}", font=marker_font, fill=accent)
-        f_lines = _wrap(draw, fact, fact_font, left_w - 70)
-        y = _draw_lines(draw, f_lines, (64 + 64, y), fact_font, PAPER, 40) + 18
+        f_lines = _wrap(draw, fact, fact_font, left_w - 66)
+        y = _draw_lines(draw, f_lines, (64 + 62, y), fact_font, PAPER, 36) + 14
+
+    # Source à consulter : source · date · lien (bas de la colonne gauche)
+    y = max(y + 20, 848)
+    _section_title(draw, "Source à consulter", (64, y), accent)
+    draw.text((64, y + 30), f"{ctx['source']}  ·  {ctx['date']}",
+              font=_font("mono", 21, "Bold"), fill=PAPER)
+    url_font = _font("mono", 19, "Regular")
+    url_lines = _wrap(draw, str(ctx["url"]), url_font, left_w)
+    _draw_lines(draw, url_lines, (64, y + 62), url_font, PAPER_DIM, 26)
 
     # panneau récap (droite) — placé sous le tampon pour éviter le chevauchement
     px0 = SLIDE_W - 64 - 460
@@ -442,26 +452,31 @@ def _slide_cta(ctx):
     pw = 1160
     px0 = cx - pw // 2
     rows = VISIPILOT_CTA["services"]
-    row_h = 66
-    ph = 44 + len(rows) * row_h
+    row_h = 62
+    ph = 40 + len(rows) * row_h
     _panel(draw, [px0, y, px0 + pw, y + ph], radius=18)
     sf = _font("sans", 30, "Medium")
-    ry = y + 30
+    ry = y + 28
     for r in rows:
         draw.ellipse([px0 + 40, ry + 13, px0 + 56, ry + 29], fill=accent + (255,))
         draw.text((px0 + 82, ry), r, font=sf, fill=PAPER)
         ry += row_h
-    y += ph + 40
+    y += ph + 36
 
-    # bouton CTA
-    cf = _font("mono", 28, "Bold")
-    cta = VISIPILOT_CTA["cta"]
+    # bouton CTA rempli (style "pro")
+    cf = _font("mono", 27, "Bold")
+    cta = VISIPILOT_CTA["cta"] + "   →"
     cw = draw.textlength(cta, font=cf)
-    bw = cw + 88
+    bw = cw + 92
     bx0 = cx - bw // 2
-    draw.rounded_rectangle([bx0, y, bx0 + bw, y + 74], radius=14,
-                           fill=accent + (32,), outline=accent + (255,), width=2)
-    draw.text((cx - cw / 2, y + 21), cta, font=cf, fill=PAPER)
+    draw.rounded_rectangle([bx0, y, bx0 + bw, y + 72], radius=14, fill=accent + (255,))
+    draw.text((cx - cw / 2, y + 21), cta, font=cf, fill=(12, 16, 22))
+
+    # URL du site, bien visible
+    uf = _font("mono", 30, "Bold")
+    url = VISIPILOT_CTA["url"]
+    uw = draw.textlength(url, font=uf)
+    draw.text((cx - uw / 2, y + 96), url, font=uf, fill=accent)
     return base
 
 
@@ -502,16 +517,14 @@ def render_article_to_pdf(item, author_name: str, style: str, out_dir: Path,
     common = dict(
         accent=accent, source=item.source, country=item.country,
         category_label=category_label, editorial_angle=theme.get("editorial_angle", ""),
-        risk_label=risk_label,
+        risk_label=risk_label, url=item.url, date=item.published,
     )
 
     slides = [
         _slide_hook({**common, "base": base_ctx(1), "headline": copy["headline"]}),
         _slide_detail({**common, "base": base_ctx(2),
                        "body_text": copy["body_text"], "facts": copy["facts"]}),
-        _slide_cta({**common, "base": base_ctx(3),
-                    "cta_headline": copy["cta_headline"], "cta_title": copy["cta_title"],
-                    "cta_sub": copy["cta_sub"]}),
+        _slide_cta({**common, "base": base_ctx(3)}),
     ]
 
     png_paths = []
