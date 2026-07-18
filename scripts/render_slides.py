@@ -1,0 +1,475 @@
+"""
+Moteur de rendu 100 % Pillow (aucun navigateur, aucune dépendance binaire).
+
+Remplace l'ancien rendu HTML -> Playwright/Chromium -> PDF, qui ne pouvait pas
+tourner de façon fiable sur Streamlit Community Cloud (~1 Go RAM, pas de Chromium).
+
+On dessine directement les 3 diapos (1920x1080) avec Pillow : dégradé « mesh »
+approximé, panneaux translucides, logo VisiPilot, tampon de risque, texte mis en
+page avec des polices TTF bundlées (assets/fonts). Puis on assemble en PDF.
+
+La signature publique `render_article_to_pdf(...)` est inchangée pour que
+`main.py`, l'app Streamlit et le workflow GitHub Actions continuent de marcher.
+"""
+from __future__ import annotations
+
+import os
+from functools import lru_cache
+from pathlib import Path
+
+import requests
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
+
+from icons import CATEGORY_LABELS, RISK_LABELS, ACCENT
+from themes import get_theme
+
+ROOT = Path(__file__).parent.parent
+FONTS_DIR = ROOT / "assets" / "fonts"
+LOGO_PATH = ROOT / "logo 04 copie.jpg"
+
+SLIDE_W, SLIDE_H = 1920, 1080
+
+# Palette de base (identique à l'ancien template)
+PAPER = (233, 236, 234)       # #E9ECEA
+PAPER_DIM = (175, 192, 190)   # #AFC0BE
+
+PEXELS_QUERY_BY_CATEGORY = {
+    "biologique": "microbiology laboratory food",
+    "allergene": "food ingredients close up",
+    "corps_etranger": "food factory production line",
+    "chimique": "chemistry laboratory analysis",
+    "reglementaire": "food inspection warehouse",
+    "fraude": "food packaging industry",
+    "autre": "food industry factory",
+}
+
+_FONT_FILES = {
+    "display": "ArchivoBlack-Regular.ttf",
+    "sans": "Inter-Regular.ttf",
+    "mono": "JetBrainsMono-Regular.ttf",
+}
+
+
+# --------------------------------------------------------------------------- #
+# Helpers couleurs
+# --------------------------------------------------------------------------- #
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    h = hex_color.lstrip("#")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def _darken_hex(hex_color: str, amount: int = 60) -> str:
+    r, g, b = _hex_to_rgb(hex_color)
+    r, g, b = max(0, r - amount), max(0, g - amount), max(0, b - amount)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+# --------------------------------------------------------------------------- #
+# Polices
+# --------------------------------------------------------------------------- #
+@lru_cache(maxsize=64)
+def _font(family: str, size: int, weight: str | None = None) -> ImageFont.FreeTypeFont:
+    path = FONTS_DIR / _FONT_FILES[family]
+    try:
+        f = ImageFont.truetype(str(path), size)
+    except Exception:
+        return ImageFont.load_default()
+    if weight and family != "display":
+        try:
+            f.set_variation_by_name(weight)
+        except Exception:
+            pass
+    return f
+
+
+# --------------------------------------------------------------------------- #
+# Logo (fond blanc -> transparent pour garder uniquement la marque colorée)
+# --------------------------------------------------------------------------- #
+@lru_cache(maxsize=1)
+def _logo_rgba() -> Image.Image | None:
+    if not LOGO_PATH.exists():
+        return None
+    logo = Image.open(LOGO_PATH).convert("RGBA")
+    px = logo.getdata()
+    out = []
+    for r, g, b, a in px:
+        if r > 232 and g > 232 and b > 232:
+            out.append((r, g, b, 0))
+        else:
+            out.append((r, g, b, a))
+    logo.putdata(out)
+    return logo
+
+
+def _paste_logo(base: Image.Image, box_w: int, xy: tuple[int, int], opacity: float = 1.0):
+    logo = _logo_rgba()
+    if logo is None:
+        return
+    ratio = box_w / logo.width
+    lg = logo.resize((box_w, max(1, int(logo.height * ratio))), Image.LANCZOS)
+    if opacity < 1.0:
+        alpha = lg.split()[3].point(lambda a: int(a * opacity))
+        lg.putalpha(alpha)
+    base.paste(lg, xy, lg)
+
+
+# --------------------------------------------------------------------------- #
+# Fond « mesh gradient »
+# --------------------------------------------------------------------------- #
+def _paste_glow(bg: Image.Image, cx: int, cy: int, diameter: int, color: tuple[int, int, int], strength: float):
+    """Colle une tache radiale douce (approxime les mesh gradients CSS)."""
+    rad = ImageOps.invert(Image.radial_gradient("L")).resize((diameter, diameter))
+    rad = rad.point(lambda a: int(a * strength))
+    glow = Image.new("RGB", (diameter, diameter), color)
+    bg.paste(glow, (cx - diameter // 2, cy - diameter // 2), rad)
+
+
+def _make_background(theme: dict, photo_url: str | None = None) -> Image.Image:
+    top = _hex_to_rgb(_darken_hex(theme["primary"], 70))
+    bot = _hex_to_rgb(_darken_hex(theme["secondary"], 90))
+
+    bg = Image.new("RGB", (SLIDE_W, SLIDE_H), bot)
+    d = ImageDraw.Draw(bg)
+    for y in range(SLIDE_H):
+        t = y / (SLIDE_H - 1)
+        r = int(top[0] * (1 - t) + bot[0] * t)
+        g = int(top[1] * (1 - t) + bot[1] * t)
+        b = int(top[2] * (1 - t) + bot[2] * t)
+        d.line([(0, y), (SLIDE_W, y)], fill=(r, g, b))
+
+    primary = _hex_to_rgb(theme["primary"])
+    accent = _hex_to_rgb(theme["accent"])
+    secondary = _hex_to_rgb(theme["secondary"])
+    _paste_glow(bg, int(SLIDE_W * 0.20), int(SLIDE_H * 0.45), 1500, primary, 0.55)
+    _paste_glow(bg, int(SLIDE_W * 0.85), int(SLIDE_H * 0.15), 1100, accent, 0.30)
+    _paste_glow(bg, int(SLIDE_W * 0.65), int(SLIDE_H * 0.90), 1300, secondary, 0.40)
+    bg = bg.filter(ImageFilter.GaussianBlur(70))
+
+    if photo_url:
+        try:
+            resp = requests.get(photo_url, timeout=15)
+            resp.raise_for_status()
+            from io import BytesIO
+            photo = Image.open(BytesIO(resp.content)).convert("RGB")
+            photo = ImageOps.fit(photo, (SLIDE_W, SLIDE_H), Image.LANCZOS)
+            overlay = Image.new("RGB", (SLIDE_W, SLIDE_H), (0, 0, 0))
+            photo = Image.blend(photo, overlay, 0.62)
+            bg = Image.blend(bg, photo, 0.85)
+        except Exception as e:
+            print(f"[render] photo ignorée (raison: {e})")
+
+    # On garde le fond en RGB : le blending alpha de Pillow (Draw(im, "RGBA"))
+    # ne s'active que lorsqu'on dessine SUR une image RGB.
+    return bg
+
+
+# --------------------------------------------------------------------------- #
+# Pexels (style photo)
+# --------------------------------------------------------------------------- #
+def fetch_pexels_photo(category: str) -> str | None:
+    api_key = os.environ.get("PEXELS_API_KEY")
+    if not api_key:
+        return None
+    query = PEXELS_QUERY_BY_CATEGORY.get(category, "food industry")
+    try:
+        r = requests.get(
+            "https://api.pexels.com/v1/search",
+            params={"query": query, "per_page": 5, "orientation": "landscape"},
+            headers={"Authorization": api_key},
+            timeout=15,
+        )
+        r.raise_for_status()
+        photos = r.json().get("photos", [])
+        if not photos:
+            return None
+        return photos[0]["src"]["landscape"]
+    except Exception as e:
+        print(f"[Pexels] fallback gradient (raison: {e})")
+        return None
+
+
+# --------------------------------------------------------------------------- #
+# Helpers texte
+# --------------------------------------------------------------------------- #
+def _wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+    words = (text or "").split()
+    lines: list[str] = []
+    cur = ""
+    for w in words:
+        test = f"{cur} {w}".strip()
+        if not cur or draw.textlength(test, font=font) <= max_width:
+            cur = test
+        else:
+            lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _draw_lines(draw, lines, xy, font, fill, line_h):
+    x, y = xy
+    for ln in lines:
+        draw.text((x, y), ln, font=font, fill=fill)
+        y += line_h
+    return y
+
+
+def _draw_eyebrow(draw, base, accent, date_str, theme_name):
+    x, y = 64, 60
+    draw.ellipse([x, y + 6, x + 12, y + 18], fill=accent)
+    mono = _font("mono", 20, "Medium")
+    label = f"VEILLE FOOD SAFETY  ·  {date_str}"
+    draw.text((x + 26, y), label, font=mono, fill=PAPER_DIM)
+    lx = x + 26 + draw.textlength(label, font=mono) + 28
+    # tag thème
+    tag_font = _font("mono", 17, "Medium")
+    tw = draw.textlength(theme_name.upper(), font=tag_font)
+    draw.rounded_rectangle([lx, y - 4, lx + tw + 36, y + 26], radius=16,
+                           fill=accent + (28,), outline=accent + (120,), width=1)
+    draw.text((lx + 18, y + 1), theme_name.upper(), font=tag_font, fill=accent)
+
+
+def _draw_footer(base, draw, author_name, page_idx, page_total):
+    y = SLIDE_H - 78
+    _paste_logo(base, 120, (64, y - 4))
+    brand_font = _font("mono", 20, "Medium")
+    draw.text((196, y + 6), f"{author_name}", font=_font("mono", 21, "Bold"), fill=PAPER)
+    draw.text((196 + draw.textlength(author_name, font=_font('mono', 21, 'Bold')) + 10, y + 8),
+              "— Consultant & auditeur food safety", font=brand_font, fill=PAPER_DIM)
+    page_txt = f"{page_idx} / {page_total}"
+    draw.text((SLIDE_W - 64 - draw.textlength(page_txt, font=brand_font), y + 8),
+              page_txt, font=brand_font, fill=PAPER_DIM)
+
+
+def _draw_stamp(base, accent, risk_label, risk_sub):
+    S = 320
+    m = 30
+    inner_w = S - 2 * m - 26
+    layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    d.ellipse([m, m, S - m, S - m], outline=accent, width=6, fill=(0, 0, 0, 90))
+    d.ellipse([m + 18, m + 18, S - m - 18, S - m - 18], outline=accent + (140,), width=2)
+
+    # Auto-ajuste la taille de police pour que le libellé tienne dans le badge,
+    # puis répartit sur 1-2 lignes (ex. "ALERTE ÉLEVÉE", "SURVEILLANCE").
+    size = 42
+    while size > 22:
+        f = _font("mono", size, "Bold")
+        if max(d.textlength(w, font=f) for w in risk_label.split()) <= inner_w:
+            break
+        size -= 2
+    f_main = _font("mono", size, "Bold")
+    lines = _wrap(d, risk_label, f_main, inner_w) or [risk_label]
+    line_h = size + 6
+    f_sub = _font("mono", 22, "Medium")
+
+    total_h = len(lines) * line_h + 34
+    y = (S - total_h) / 2
+    for ln in lines:
+        w = d.textlength(ln, font=f_main)
+        d.text(((S - w) / 2, y), ln, font=f_main, fill=accent)
+        y += line_h
+    sw = d.textlength(risk_sub, font=f_sub)
+    d.text(((S - sw) / 2, y + 6), risk_sub, font=f_sub, fill=accent + (220,))
+
+    layer = layer.rotate(-9, expand=True, resample=Image.BICUBIC)
+    base.paste(layer, (SLIDE_W - 52 - layer.width, 40), layer)
+
+
+def _panel(draw, box, radius=18):
+    draw.rounded_rectangle(box, radius=radius, fill=(255, 255, 255, 12),
+                           outline=(255, 255, 255, 40), width=1)
+
+
+def _section_title(draw, text, xy, accent):
+    draw.text(xy, text.upper(), font=_font("mono", 20, "Bold"), fill=accent)
+
+
+# --------------------------------------------------------------------------- #
+# Slides
+# --------------------------------------------------------------------------- #
+def _base_slide(theme, accent, date_str, photo_url, page_idx, author_name,
+                risk_label, risk_sub):
+    base = _make_background(theme, photo_url)
+    _paste_logo(base, 620, ((SLIDE_W - 620) // 2, (SLIDE_H - 620) // 2), opacity=0.06)
+    draw = ImageDraw.Draw(base, "RGBA")
+    _draw_eyebrow(draw, base, accent, date_str, theme["name"])
+    _draw_stamp(base, accent, risk_label, risk_sub)
+    _draw_footer(base, draw, author_name, page_idx, 3)
+    return base, draw
+
+
+def _slide_hook(ctx):
+    base, draw = _base_slide(**ctx["base"])
+    accent = ctx["accent"]
+    # chip catégorie
+    chip_font = _font("mono", 22, "Bold")
+    cat = ctx["category_label"].upper()
+    cw = draw.textlength(cat, font=chip_font)
+    draw.rounded_rectangle([64, 250, 64 + cw + 44, 300], radius=14,
+                           fill=accent + (30,), outline=accent + (150,), width=1)
+    draw.text((64 + 22, 258), cat, font=chip_font, fill=accent)
+
+    # headline
+    hl_font = _font("display", 78)
+    lines = _wrap(draw, ctx["headline"], hl_font, 1080)
+    y = _draw_lines(draw, lines, (64, 340), hl_font, PAPER, 92)
+
+    # kicker
+    k_font = _font("mono", 22, "Medium")
+    kb_font = _font("mono", 22, "Bold")
+    ky = y + 40
+    kx = 64
+    for label, val in [("SOURCE", ctx["source"]), ("ZONE", ctx["country"]),
+                       ("CATÉGORIE", ctx["category_label"])]:
+        draw.text((kx, ky), label + " ", font=k_font, fill=PAPER_DIM)
+        kx += draw.textlength(label + "  ", font=k_font)
+        draw.text((kx, ky), val, font=kb_font, fill=PAPER)
+        kx += draw.textlength(val, font=kb_font) + 48
+
+    # panneau angle éditorial (colonne droite)
+    px0 = SLIDE_W - 64 - 460
+    _panel(draw, [px0, 360, SLIDE_W - 64, 640])
+    _section_title(draw, "Angle éditorial", (px0 + 32, 392), accent)
+    ang_font = _font("sans", 26, "Regular")
+    ang_lines = _wrap(draw, ctx["editorial_angle"], ang_font, 396)
+    _draw_lines(draw, ang_lines, (px0 + 32, 436), ang_font, PAPER_DIM, 38)
+    return base
+
+
+def _slide_detail(ctx):
+    base, draw = _base_slide(**ctx["base"])
+    accent = ctx["accent"]
+    left_w = 1050
+
+    _section_title(draw, "Ce qu'il s'est passé", (64, 240), accent)
+    body_font = _font("sans", 34, "Medium")
+    body_lines = _wrap(draw, ctx["body_text"], body_font, left_w)
+    y = _draw_lines(draw, body_lines, (64, 288), body_font, PAPER, 50)
+
+    y += 24
+    draw.line([(64, y), (64 + left_w, y)], fill=accent + (180,), width=2)
+    y += 40
+
+    _section_title(draw, "Points clés pour vos audits", (64, y), accent)
+    y += 52
+    fact_font = _font("sans", 28, "Regular")
+    marker_font = _font("mono", 24, "Bold")
+    for i, fact in enumerate(ctx["facts"], start=1):
+        draw.text((64, y + 2), f"{i:02d}", font=marker_font, fill=accent)
+        f_lines = _wrap(draw, fact, fact_font, left_w - 70)
+        y = _draw_lines(draw, f_lines, (64 + 64, y), fact_font, PAPER, 40) + 18
+
+    # panneau récap (droite)
+    px0 = SLIDE_W - 64 - 460
+    _panel(draw, [px0, 250, SLIDE_W - 64, 690], radius=20)
+    _section_title(draw, "Résumé rapide", (px0 + 32, 284), accent)
+    ry = 340
+    sm = _font("sans", 24, "Regular")
+    smb = _font("sans", 24, "SemiBold")
+    for label, val, col in [("Source", ctx["source"], PAPER),
+                            ("Zone", ctx["country"], PAPER),
+                            ("Catégorie", ctx["category_label"], PAPER),
+                            ("Niveau", ctx["risk_label"], accent)]:
+        draw.text((px0 + 32, ry), f"{label} :", font=smb, fill=PAPER)
+        lx = px0 + 32 + draw.textlength(f"{label} :  ", font=smb)
+        vlines = _wrap(draw, str(val), sm, (SLIDE_W - 64) - lx - 20)
+        ry = _draw_lines(draw, vlines, (lx, ry), sm, col, 34) + 16
+    return base
+
+
+def _slide_cta(ctx):
+    base, draw = _base_slide(**ctx["base"])
+    accent = ctx["accent"]
+
+    hl_font = _font("display", 62)
+    lines = _wrap(draw, ctx["cta_headline"], hl_font, 1400)
+    total_h = len(lines) * 76
+    y = 300
+    for ln in lines:
+        w = draw.textlength(ln, font=hl_font)
+        draw.text(((SLIDE_W - w) / 2, y), ln, font=hl_font, fill=PAPER)
+        y += 76
+
+    # box CTA centrée
+    box_w = 900
+    bx0 = (SLIDE_W - box_w) // 2
+    by0 = y + 50
+    ct_font = _font("display", 34)
+    cs_font = _font("sans", 26, "Regular")
+    cs_lines = _wrap(draw, ctx["cta_sub"], cs_font, box_w - 100)
+    box_h = 70 + 40 + len(cs_lines) * 38
+    draw.rounded_rectangle([bx0, by0, bx0 + box_w, by0 + box_h], radius=16,
+                           fill=(255, 255, 255, 12), outline=accent + (255,), width=2)
+    tw = draw.textlength(ctx["cta_title"], font=ct_font)
+    draw.text(((SLIDE_W - tw) / 2, by0 + 28), ctx["cta_title"], font=ct_font, fill=PAPER)
+    sy = by0 + 90
+    for ln in cs_lines:
+        w = draw.textlength(ln, font=cs_font)
+        draw.text(((SLIDE_W - w) / 2, sy), ln, font=cs_font, fill=PAPER_DIM)
+        sy += 38
+
+    # wordmark
+    wy = by0 + box_h + 46
+    _paste_logo(base, 60, (SLIDE_W // 2 - 130, wy - 6))
+    wm_font = _font("mono", 22, "Bold")
+    draw.text((SLIDE_W // 2 - 55, wy + 12), "VISIPILOT.COM", font=wm_font, fill=PAPER_DIM)
+    return base
+
+
+# --------------------------------------------------------------------------- #
+# Point d'entrée public (signature inchangée)
+# --------------------------------------------------------------------------- #
+def render_article_to_pdf(item, author_name: str, style: str, out_dir: Path,
+                          index: int, theme: dict | None = None) -> Path:
+    """style: 'photo' ou 'graphic'. theme: dict du thème visuel. Retourne le chemin du PDF."""
+    from copywriter import generate_copy
+
+    if theme is None:
+        theme = get_theme()
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    copy = generate_copy(item, editorial_angle=theme.get("editorial_angle", ""))
+    accent = _hex_to_rgb(ACCENT.get(item.risk_level, ACCENT["MEDIUM"]))
+    risk_label, risk_sub = RISK_LABELS.get(item.risk_level, RISK_LABELS["MEDIUM"])
+    category_label = CATEGORY_LABELS.get(item.category, "Sécurité des aliments")
+
+    photo_url = None
+    if style == "photo":
+        photo_url = fetch_pexels_photo(item.category)
+
+    def base_ctx(page_idx):
+        return dict(
+            theme=theme, accent=accent, date_str=item.published, photo_url=photo_url,
+            page_idx=page_idx, author_name=author_name,
+            risk_label=risk_label, risk_sub=risk_sub,
+        )
+
+    common = dict(
+        accent=accent, source=item.source, country=item.country,
+        category_label=category_label, editorial_angle=theme.get("editorial_angle", ""),
+        risk_label=risk_label,
+    )
+
+    slides = [
+        _slide_hook({**common, "base": base_ctx(1), "headline": copy["headline"]}),
+        _slide_detail({**common, "base": base_ctx(2),
+                       "body_text": copy["body_text"], "facts": copy["facts"]}),
+        _slide_cta({**common, "base": base_ctx(3),
+                    "cta_headline": copy["cta_headline"], "cta_title": copy["cta_title"],
+                    "cta_sub": copy["cta_sub"]}),
+    ]
+
+    png_paths = []
+    for i, img in enumerate(slides, start=1):
+        rgb = img.convert("RGB")
+        png_path = out_dir / f"article{index}_slide{i}.png"
+        rgb.save(png_path)
+        png_paths.append(rgb)
+
+    pdf_path = out_dir / f"veille_{item.risk_level.lower()}_{index}.pdf"
+    png_paths[0].save(pdf_path, save_all=True, append_images=png_paths[1:])
+    return pdf_path

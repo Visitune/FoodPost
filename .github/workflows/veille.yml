@@ -1,0 +1,65 @@
+name: Veille food safety LinkedIn
+
+on:
+  schedule:
+    # Toutes les 48h à 7h00 UTC (~9h Paris en été, 8h en hiver)
+    - cron: "0 7 */2 * *"
+  workflow_dispatch:
+    inputs:
+      style:
+        description: "Style visuel des diapos"
+        required: false
+        default: "graphic"
+        type: choice
+        options: ["graphic", "photo"]
+      theme:
+        description: "Thème visuel (auto = basé sur la date)"
+        required: false
+        default: "auto"
+        type: choice
+        options: ["auto", "listeria", "allergenes", "fraude", "chimique", "reglementaire", "corps_etranger", "alerte_generale"]
+
+jobs:
+  build-and-send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        working-directory: scripts
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          EMAIL_HOST: ${{ secrets.EMAIL_HOST }}
+          EMAIL_PORT: ${{ secrets.EMAIL_PORT }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          THEME_FLAG=""
+          if [ "${{ github.event.inputs.theme }}" != "auto" ]; then
+            THEME_FLAG="--theme ${{ github.event.inputs.theme }}"
+          fi
+          python main.py \
+            --style "${{ github.event.inputs.style || 'graphic' }}" \
+            --author "${{ vars.AUTHOR_NAME || 'Votre nom' }}" \
+            --max-items 2 \
+            $THEME_FLAG
+
+      - name: Upload des PDF générés (secours si l'email échoue)
+        uses: actions/upload-artifact@v4
+        with:
+          name: veille-linkedin-${{ github.run_id }}
+          path: output/*.pdf
+          retention-days: 14
+          if-no-files-found: ignore
